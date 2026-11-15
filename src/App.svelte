@@ -495,6 +495,7 @@
           <option value="en" lang="en">English</option>
           <option value="zh-CN" lang="zh-CN">简体中文</option>
         </select>
+        <ChevronDown class="language-chevron" size={12} aria-hidden="true" />
       </div>
       {#if photos.length}<span class="photo-count">{photos.length} {$t("张照片",{count:photos.length})}</span>{/if}
       <button class="button secondary compact" on:click={choosePhotos} disabled={!desktop || importing || loading || !initialized}>
