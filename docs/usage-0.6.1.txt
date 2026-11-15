@@ -1,0 +1,24 @@
+留白 0.6.1 · Mac 内部试用版
+
+1. 导入 JPG / PNG / HEIC 照片，选择最终比例、最小留白百分比与颜色。照片完整保留，不裁切、不拉伸。
+2. 打开“边框模板库”选择本地设计模板，按真实留白适配横竖照片。“艺术边框调整”可修改配色、强度与大小。
+3. 点击“生成手绘素材”，选择生成服务：
+   - 本机 Codex：复用现有 CLI 登录，使用 Codex 额度。CLI 需支持内置图像生成，不随软件打包。
+   - GPT Image API：默认 OpenAI 官方地址，在软件内填写自己的 API Key。选择图像模型，也可“读取可用模型”或手填模型 ID；选择质量与素材尺寸。使用该 API 项目的额度。
+4. 输入想要的图案风格。照片参考默认关闭；开启时仅发送界面展示的无原始元数据缩略图。勾选同意后，每次生成一张透明 PNG，先看实际装框预览，再应用或保存模板。
+5. 生成的素材可调整上下六个位置、大小、透明度与水平翻转。保存模板后可离线复用，切换照片、缩放和批量导出不会再次调用模型。
+6. “精修一次”先展示不含水印的配框图，确认后将原图与配框缩略图交给模型一轮，调整配色、强度、装饰大小或 PNG 位置；不重绘 PNG 像素，不自动循环。应用后可撤销。
+7. 文字 / PNG 水印支持中文字体、字体 ↑ ↓ 切换、横纵偏移滑块及带照片和边框的实时局部预览。右上角可切换 English。
+8. 选择导出目录，批量另存 JPG（默认质量 95）或 PNG；同名自动编号，支持取消、恢复和失败重试。原图不会改动。
+
+API Key 只保留在本次软件会话内，不保存到设置、模板或素材来源记录；切换接口主机会清除旧 Key。关闭软件后需重填。取消本地等待不保证服务端停止计算或免计费。没有自动重试或另一家付费服务回退。
+兼容服务需支持 Images API、JSON 参考图输入和 Base64 透明 PNG 输出。模型列表不能保证项目拥有实际调用权限；遇到权限或参数错误会明确提示。
+普通加框与水印全程在本机。输出统一 SDR sRGB；HEIC 使用静态主图，不保留动态内容、HDR 增益图或原始位置元数据。大图有缓冲预算检查，预算不是整个进程内存的硬上限。
+Apple Silicon Mac，临时签名，未做 Apple 公证。Windows 本轮未构建或实机测试。
+详见“GPT生图模型接入说明-0.6.1.md”。
+
+English quick start
+Choose English at the top right. Import photos, set ratio/padding/color, and select a local design from Frame library.
+Open Generate hand-drawn artwork. Choose local Codex to use your existing CLI login, or GPT Image API to enter your own API key and select an image model. Load the available model list or enter an ID manually. Set quality and asset dimensions.
+Photo reference is off by default. Confirm the destination and credit source before generating one transparent PNG. Review, apply and save a template for offline reuse. Resizing and exporting do not trigger another image request.
+API keys remain in this app session only and are cleared when the endpoint host changes. Cancellation may not prevent provider charges. This Apple Silicon Mac trial is locally signed, not notarized; Windows has not been tested in this release.

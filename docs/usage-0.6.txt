@@ -1,0 +1,23 @@
+留白 0.6.0 · Mac 内部试用版
+
+1. 导入 JPG / PNG / HEIC 照片，选择最终比例、最小留白百分比与颜色。完整保留照片，不裁切、不拉伸。
+2. 打开“边框模板库”→“设计模板”，选择 11 套线条、植物、几何与插画构图。新模板根据真实留白适配横竖照片，保留当前最终比例。
+3. 展开“艺术边框调整”，修改三种配色、装饰强度与大小。高级设置默认折叠。
+4. “用 Codex 生成手绘素材”：填写设计方向，默认只发送文字，照片参考默认关闭。勾选同意后一次生成一张真正透明的 PNG，使用本机已登录 Codex 的额度。CLI 需要支持内置图像生成，不随本包分发。
+5. 生成后先预览实际效果，再应用或保存个人模板。手绘素材可调整上下六个位置、大小、透明度、水平翻转；保存后可离线复用。切换照片和批量导出不会再次生图。
+6. “精修一次”先展示不含水印的配框图，确认后将原图与配框缩略图交给模型一轮，调整颜色、强度、装饰大小或 PNG 位置。它不重绘 PNG 像素，不自动循环。先看结果再应用，应用后可撤销。
+7. 文字 / PNG 水印、三种内置中文字体、字体 ↑ ↓ 切换、横纵偏移滑块，以及带照片/边框的局部预览均保留。右上角可选 English。
+8. 选择导出目录，批量另存 JPG（默认质量 95）或 PNG；同名自动编号，支持取消、恢复、失败重试。原图不改动。
+
+详细方案见“艺术边框与Codex生图方案-0.6.md”，包含未来独立图片 API 适配器的方案。当前兼容视觉 API 用于参数配框和精修，尚未实现其生图适配器。
+
+普通处理在本机完成。模型生成需要联网与相应额度，取消后已发送的任务仍可能计费；没有自动重试或付费 API 回退。API Key 仅在本次内存保留。
+旧版本无参考尺寸的模板保留原外观。窄边框会缩小或隐藏装饰。
+输出为 SDR sRGB，HEIC 使用静态主图，不保留 Live Photo、HDR 增益图或原始位置元数据。超大图会提示限制导出长边；缓冲预算不是整个进程的硬内存上限。
+Apple Silicon Mac，临时签名，未做 Apple 公证。Windows 本轮未构建或实机测试。
+
+English quick start
+Choose English at the top right. Import photos, set ratio/padding/color, and open Frame library for 11 adaptive local compositions. Artwork adjustments control palette, strength and size.
+Generate artwork with Codex creates one transparent PNG using your existing Codex CLI login. Photo reference is off by default. Review, apply, and save a template for offline reuse. Resize or export without another model call.
+Refine once compares the photo and current composition in one model pass. It adjusts parameters, not the PNG pixels. Watermarks are omitted from model previews. Apply manually and undo if needed.
+Chinese fonts, precise watermark offsets and the live context preview remain available. Export JPG or PNG copies, preserving originals. This Apple Silicon Mac trial is locally signed, not notarized. Windows has not been tested in this release.

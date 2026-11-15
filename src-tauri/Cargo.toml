@@ -1,0 +1,43 @@
+[package]
+name = "liubai"
+version = "0.8.1"
+description = "Local photo frames and watermarks"
+authors = ["FishyJ"]
+edition = "2021"
+
+[lib]
+name = "liubai_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-single-instance = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ttf-parser = "0.25.1"
+mimalloc = {version="0.1.52",default-features=false}
+tiny-skia = {version="0.12",default-features=false,features= ["std", "simd"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+tempfile = "3"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+libheif-rs = { version = "2.6", default-features = false, features = ["v1_20"] }
+lcms2 = { version = "6", features = ["static"] }
+cosmic-text = "0.19"
+base64 = "0.22"
+kamadak-exif = "0.6"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tokio = { version = "1", features = ["process", "time", "sync", "macros", "net", "io-util"] }
+jsonwebtoken = "=9.3.1"
+keyring = { version = "=3.6.3", default-features = false, features = ["apple-native", "windows-native"] }
+ring = "0.17"
+
+[profile.release]
+strip = true
+lto = "thin"
+codegen-units = 1
+panic = "unwind"

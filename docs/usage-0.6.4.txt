@@ -1,0 +1,20 @@
+留白 0.6.4 · Mac 内部试用版
+
+形状与布局精修
+1. 导入照片，应用边框模板或智能配框方案。
+2. 点击“精修一次”，选快捷方向，或写下想改的形状、大小、位置与布局。
+3. 核对当前模型及缩略图，勾选同意后精修一轮。比例、边框宽度和照片保持不变。
+4. 前后对比准备完成后会自动显示。点击“应用”才替换当前边框；可撤销、保存个人模板，下次离线使用。
+
+线条可重新设计控制点；图案可改种类、宽高、旋转、位置和疏密。模板线条在精修后成为自定义矢量设计。PNG 可移动、缩放、翻转，不重画原素材。
+越出留白的设计会提示调整，不会裁掉装饰来掩盖问题。每轮只返回一套，没有自动重试。
+
+模型配置
+右上角可独立连接 Pi 的 OpenAI/ChatGPT、Claude、Copilot 订阅或 OpenRouter 余额账户。与本机 Pi 共用授权；这里重新登录或退出会影响 Pi 的同一服务。
+模型目录只显示视觉模型，不保证套餐全部可用。保存设置不启动请求。图像生成单独设置，默认本机 Codex；GPT Image API 使用独立 Key。
+普通加框、水印、模板、连续缩放与批量导出仍在本机；选输出目录后另存 JPG/PNG，原图保留。右上角可切换 English。
+
+English
+Apply a frame, then open Refine once. Choose a refinement direction or describe changes to curve shapes, motif size, placement and layout. Confirm the thumbnails and model before sending one request. Compare the full before/after frames, then apply or save the result as a template.
+PNG artwork can be moved, resized and flipped; its pixels are preserved. Frame ratio and padding stay fixed. Out-of-border geometry is rejected. Regular framing and saved templates remain local.
+This Apple Silicon trial build is ad-hoc signed and not notarized. Windows was not tested in this release.

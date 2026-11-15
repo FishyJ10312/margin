@@ -1,0 +1,26 @@
+留白 0.6.2 · Mac 内部试用版
+
+新增免 Key 分析配框
+1. 导入照片，点击“根据照片智能配框”。
+2. 模型入口选择“ChatGPT 账户 · 无需 API Key”。
+3. 点击 Continue with ChatGPT，在官方浏览器页面登录并授权使用套餐用量。回到留白，选择此账户可用的模型。
+4. 核对缩略图和设计方向，勾选发送确认，生成三套边框建议；先预览再应用或保存模板。
+5. “精修一次”也支持此账户入口，分析原图和当前配框缩略图一轮；不发送署名，不重画 PNG 像素。
+
+可保存多个账户和工作区连接，支持切换、重新登录、刷新模型和断开。切换后需重新确认发送。仅登录但未授权套餐用量时不能分析。官方接入受套餐、工作区、地区及应用资格限制；本应用尚未完成真实账户授权验收。
+账户密码只在 OpenAI 官方页面输入。授权令牌由 Rust 后台保存在系统凭据库；模型设置和模板没有令牌。登录不发送照片，确认分析后才发送已展示、去除原始元数据的缩略图。取消等待不保证服务端停止计算或免计用量。
+“在 ChatGPT 中管理用量与授权”可打开官方用量设置。断开时如果远程撤销未确认，会明确提示；请在该页面断开应用。
+
+照片与手绘生图
+普通边框、水印与批量导出仍在本机。照片完整保留，不裁切、不拉伸。设计模板按横竖照片留白重排；个人模板可离线复用。
+“生成手绘素材”默认使用本机已登录 Codex，一次一张透明 PNG。照片参考默认关闭。原有 GPT Image API 入口保留，使用单独 API Key 与 API 项目额度。两者不会自动互相回退。
+文字 / PNG 水印、中文字体、字体 ↑ ↓ 切换、精确偏移滑块、实时局部预览，以及右上角 English 均保留。
+选择导出目录，批量另存 JPG / PNG。同名自动编号，支持取消、恢复和失败重试，原图不会改动。
+输出统一 SDR sRGB，HEIC 读取静态主图，不保留动态内容、HDR 增益图或原始位置元数据。超大图有缓冲预算检查；预算不是进程内存硬上限。
+Apple Silicon Mac，临时签名，未做 Apple 公证。Windows 本轮未构建或实机测试。
+
+English quick start
+Import a photo and open Design an artistic frame. Choose ChatGPT account · No API key, then Continue with ChatGPT. Sign in and authorize plan usage on OpenAI's official browser page. Return to Liubai and choose an account-specific model.
+Review the displayed thumbnail and art direction, confirm the analysis, then preview and apply one of three frame suggestions. Refine once also supports this connection. Signing in alone does not send photos or start inference.
+Switch, reconnect or disconnect saved accounts. OAuth credentials remain in the system credential store and never enter templates or the webview. Availability depends on account and application eligibility. Real OpenAI account authorization has not yet been verified for this release.
+Hand-drawn image generation continues through local Codex by default. The separate GPT Image API option remains available. Requests never switch automatically between subscription and API billing.

@@ -1,0 +1,22 @@
+留白 0.6.3 · Mac 内部试用版
+
+模型配置
+1. 点击右上角“模型配置”，无需先导入照片。
+2. 选择 Pi 的 OpenAI / ChatGPT、Claude Pro / Max、GitHub Copilot 或 OpenRouter。Pi 是可选外部组件，若未找到，展开程序设置或打开官方安装说明。
+3. 点击“登录并连接订阅”（OpenRouter 为账户），在服务商官网完成授权。已有 Pi 授权会直接显示；此处与本机 Pi 共用授权，重新登录或退出会同时影响 Pi 的连接。
+4. 搜索并选择支持图片输入的模型，点击“保存为照片分析模型”。模型目录不代表套餐保证可用，实际访问与用量由服务商决定。OpenRouter 消耗账户余额。
+5. 导入照片，点击“根据照片智能配框”或“精修一次”，核对缩略图、设计方向、模型和用量来源，勾选确认再生成。
+
+保存设置、选模型和检查授权都不会启动模型请求。订阅失败不会自动改用 API Key。原生 ChatGPT、本机 Codex 与兼容视觉 API 入口保留；兼容 API Key 仅在本次内存中保留，更换地址来源会清空。
+图像生成单独设置，默认本机 Codex；也可选独立 GPT Image API。Pi 视觉模型用于分析与参数设计，不代替图像生成服务。
+
+照片与水印
+原有比例、边框色盘、照片取色放大镜、连续缩放、中文字体、精确水印位置和局部叠加预览均保留。模板可离线复用，横竖照片按留白重排。
+选导出目录后批量另存 JPG / PNG，保留原图；支持取消、恢复与失败重试。输出为 SDR sRGB，HEIC 只读取静态主图。右上角可切换 English。
+
+当前 Mac 为 Apple Silicon 临时签名试用包，未做 Apple 公证；Windows 本轮未实机验收。
+
+English quick start
+Open Model configuration in the top bar, even before importing photos. Choose a Pi provider, authorize on its official website, select a model with image input, and Save as analysis model. Pi uses its existing local authorization store; signing in or out here also changes Pi's connection. OpenRouter uses account balance, rather than a subscription allowance.
+Import a photo, open Design an artistic frame or Refine once, review the thumbnail and provider/model, then explicitly confirm the request. Saving and checking configuration do not start inference. Catalog entries do not guarantee plan access. Image generation remains separate and defaults to local Codex.
+Pi and Node are optional external components, not bundled with Liubai. Regular framing works without them. This release has not completed real cloud inference or Windows device acceptance.
