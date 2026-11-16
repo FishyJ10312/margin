@@ -554,7 +554,6 @@
 
   <div class="workspace">
     <main class="content-area">
-     <div class="preview-workspace">
       <div class="viewer">
         {#if loading}
           <div class="empty-state"><LoaderCircle size={25} class="spin" /><p>{$t("正在载入工作区")}</p></div>
@@ -563,7 +562,13 @@
             <div class="file-heading"><FileImage size={14} /><span title={selectedPhoto.path}>{selectedPhoto.name}</span><span class="source-size">{selectedPhoto.width} × {selectedPhoto.height}</span></div>
             <button class="icon-button" title={$t("移除当前照片")} aria-label={$t("移除当前照片")} disabled={isRunning} on:click={() => removePhotos([selectedPhoto.id])}><X size={15} /></button>
           </div>
-          {#key selectedPhoto.id}<PhotoViewport photo={selectedPhoto} {preview} picking={pickingColor} loading={previewLoading} oncolor={setFrameColor} onclose={closePicker}/>{/key}
+          {#key selectedPhoto.id}
+            <PhotoViewport photo={selectedPhoto} {preview} picking={pickingColor} loading={previewLoading} oncolor={setFrameColor} onclose={closePicker}>
+              {#if watermarkPreviewVisible}
+                <WatermarkDetail photo={selectedPhoto} {settings} overview={preview} collapsed={watermarkPreviewCollapsed} oncollapse={collapseWatermarkPreview} onlimits={(value)=>offsetLimits=value}/>
+              {/if}
+            </PhotoViewport>
+          {/key}
           <div class="viewer-bottomline" aria-live="polite">
             {#if previewError}<span class="preview-error"><AlertCircle size={14} />{$t(previewError)}</span>
             {:else if preview}<span>{$t("导出尺寸")} <strong>{preview.width} × {preview.height}</strong> px</span><span>{$t(preview.warning || "完整保留照片 · 居中补边")}</span>
@@ -579,11 +584,6 @@
           </div>
         {/if}
       </div>
-
-      {#if watermarkPreviewVisible}
-        <WatermarkDetail photo={selectedPhoto} {settings} overview={preview} collapsed={watermarkPreviewCollapsed} oncollapse={collapseWatermarkPreview} onlimits={(value)=>offsetLimits=value}/>
-      {/if}
-     </div>
 
       {#if batch && (batch.status === 'interrupted' || batch.status === 'cancelled') && pendingCount > 0}
         <div class="resume-banner"><RotateCcw size={15} /><span>{$t("有")} {pendingCount} {$t("张照片尚未完成")}</span><button class="text-button" disabled={starting} on:click={() => continueBatch('resume_batch')}>{$t("继续处理")}</button></div>

@@ -38,6 +38,7 @@
 <div bind:this={host} class="canvas photo-viewport" class:dragging>
   <img bind:this={image} class="rendered-photo zoom-photo" src={preview?.dataUrl||photo.thumbnail} alt={$t("{0} 的加框预览", {0:photo.name})} on:load={paint}/>
   <button bind:this={panSurface} class="pan-surface" aria-label={$t("照片视图，拖动平移，滚轮缩放，0 适应，1 原始大小")} on:pointerdown={down} on:pointermove={move} on:lostpointercapture={()=>{drag=null;dragging=false;}} on:keydown={key}></button>
+  <slot />
   {#if picking&&preview}<ColorSampler {photo} {preview} {image} {oncolor} {onclose}/>{/if}
   {#if loading}<span class="preview-pending">{$t("更新预览")}</span>{/if}
   {#if !picking}<span class="pan-hint"><Move size={11}/> {$t("滚轮缩放 · 拖动平移")}</span>{/if}

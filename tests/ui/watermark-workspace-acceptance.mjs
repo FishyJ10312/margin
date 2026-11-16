@@ -1,9 +1,9 @@
 // Run with ego-browser nodejs. Uses the real UI and isolated native replies.
 import assert from 'node:assert/strict';
-const task=await taskSpace('Liubai compact watermark preview');
+const task=await taskSpace('Liubai corner watermark preview');
 const page=task.page('p1');
 console.log({spaceId:task.spaceId});
-const dock='.preview-workspace > .watermark-detail';
+const dock='.photo-viewport > .watermark-detail';
 async function viewport(width,height){await page.cdp('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:false});}
 async function settled(){await page.waitForFunction(()=>document.querySelector('.watermark-detail')?.getAttribute('aria-busy')==='false'&&document.querySelector('.watermark-detail img')?.complete);}
 async function prepare(query=''){
@@ -19,8 +19,9 @@ async function geometry(){return page.evaluate(()=>{
  return {dock:box('.watermark-detail'),photo:box('.photo-viewport'),panel:box('.settings-panel'),strip:box('.filmstrip-section'),list:box('.font-picker'),footer:box('.app-footer'),width:innerWidth,height:innerHeight,documentWidth:document.documentElement.scrollWidth};
 });}
 function visibleTogether(g){
- assert.ok(g.dock.x>=g.photo.right-1&&g.dock.right<=g.panel.x&&g.dock.bottom<=g.strip.y,'Close-up sits beside the photo without covering it');
- assert.ok(g.dock.width<=230&&g.dock.height<=270,'The watermark preview stays a small card');
+ assert.ok(Math.abs(g.dock.right-(g.photo.right-8))<=1&&Math.abs(g.dock.y-(g.photo.y+8))<=1,'Close-up stays in the top-right photo corner');
+ assert.ok(g.dock.width<=160&&g.dock.height<=140,'Close-up remains a miniature overlay');
+ assert.ok(Math.abs(g.photo.right-g.panel.x)<=1,'The main photo uses all available width instead of reserving a side column');
  assert.ok(g.photo.height>=300,'Main photo keeps its full height, including at the smallest desktop size');
  assert.ok(g.list.y>=0&&g.list.bottom<=g.footer.y,'Keyboard font choices are visible');
  assert.ok(g.strip.bottom<=g.footer.y+1&&g.footer.bottom<=g.height+1,'Thumbnails and export controls fit the window');
@@ -52,12 +53,19 @@ const beforeSize=await page.evaluate(()=>document.querySelector('.watermark-deta
 await page.fill('input[aria-label="Watermark size percentage"]','4');await settled();
 assert.notEqual(await page.evaluate(()=>document.querySelector('.watermark-detail img').src),beforeSize);
 await page.fill('input[aria-label="Watermark horizontal offset"]','-40');await page.fill('input[aria-label="Watermark vertical offset"]','20');await settled();
-assert.ok(await page.evaluate(()=>document.querySelector('.detail-position').textContent.includes('X 410 · Y 740')));
+assert.ok(await page.evaluate(()=>document.querySelector('.detail-image').title.includes('X 410 · Y 740')));
 await page.selectOption('.watermark-detail select[aria-label="Watermark close-up zoom"]','2');
 assert.equal(await page.evaluate(()=>document.querySelector('.watermark-detail .fit-image').classList.contains('zoomed')),true);
+const wheelTarget=await page.evaluate(()=>{const r=document.querySelector('.detail-image').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,zoom:document.querySelector('.zoom-toolbar input[type=number]').value,transform:document.querySelector('.zoom-photo').style.transform};});
+await page.mouse.move(wheelTarget.x,wheelTarget.y,{label:'Inspecting the watermark overlay'});await page.mouse.wheel(0,100);
+assert.deepEqual(await page.evaluate(()=>({zoom:document.querySelector('.zoom-toolbar input[type=number]').value,transform:document.querySelector('.zoom-photo').style.transform})),{zoom:wheelTarget.zoom,transform:wheelTarget.transform},'Scrolling the overlay must not zoom or pan the main photo');
+const canvasPoint=await page.evaluate(()=>{const r=document.querySelector('.photo-viewport').getBoundingClientRect();return {x:r.x+30,y:r.bottom-40};});
+await page.mouse.move(canvasPoint.x,canvasPoint.y,{label:'Zooming the main photo'});await page.mouse.wheel(0,100);
+assert.notEqual(await page.evaluate(()=>document.querySelector('.zoom-toolbar input[type=number]').value),wheelTarget.zoom,'Photo wheel zoom remains available outside the overlay');
+await page.click('.zoom-toolbar [aria-pressed]');
 await page.selectOption('.watermark-detail select[aria-label="Watermark close-up view"]','placement');
 assert.equal(await page.evaluate(()=>document.querySelector('.watermark-detail .fit-image').classList.contains('zoomed')),false);
-console.log('PASS: size, offsets, zoom and whole-image placement stay synchronized in the embedded preview.');
+console.log('PASS: size/offsets/zoom stay synchronized; overlay wheel input is isolated from main-photo zoom.');
 
 for(const [width,height]of [[1180,800],[900,650]]){
  await viewport(width,height);await page.focus('.font-picker');await page.press('.font-picker','Home');await settled();
@@ -69,8 +77,9 @@ const settingsBeforeCollapse=await page.evaluate(()=>JSON.stringify(window.__qa.
 await page.click('.watermark-detail > summary');
 await page.waitForFunction(()=>!document.querySelector('.watermark-detail').open&&document.querySelector('.watermark-detail').classList.contains('collapsed'));
 const folded=await geometry();
-assert.ok(folded.dock.width<=34&&folded.photo.width>expanded.photo.width+140,'Collapsing returns the side-card width to the photo');
-assert.ok(Math.abs(folded.photo.height-expanded.photo.height)<=20,'Collapsing does not consume photo height');
+assert.ok(folded.dock.width<=28,'Collapsed overlay becomes a single magnifier');
+assert.equal(folded.photo.width,expanded.photo.width,'Folding never changes the full-width photo layout');
+assert.equal(folded.photo.height,expanded.photo.height,'Folding never changes the full-height photo layout');
 assert.equal(await page.evaluate(()=>document.activeElement===document.querySelector('.watermark-detail > summary')),true);
 assert.equal(await page.evaluate(()=>document.querySelector('.watermark-detail img')),null,'Collapsed close-up has no mounted image surface');
 assert.equal(await page.evaluate(()=>JSON.stringify(window.__qa.requests.filter(r=>r.cmd==='get_preview').at(-1).args.settings)),settingsBeforeCollapse,'Folding the preview must not disable or change the exported watermark');
@@ -81,11 +90,11 @@ assert.equal(await page.evaluate(()=>window.__qa.requests.filter(r=>r.cmd.starts
 await page.press('.watermark-detail > summary','Enter');await settled();
 assert.equal(await page.evaluate(()=>document.activeElement===document.querySelector('.watermark-detail > summary')),true);
 await page.waitForFunction(()=>window.__qa.windowControl.inner.width===2560);
-console.log('PASS: mouse/keyboard folding returns space, preserves the watermark, remembers preference and avoids enlargement while collapsed.');
+console.log('PASS: mouse/keyboard folding preserves photo layout and watermark, remembers preference and avoids enlargement while collapsed.');
 
 const withDock=(await geometry()).photo.width;
 await page.click('.watermark-section .segmented button:first-child');await page.waitForSelector(dock,{state:'hidden'});
-assert.ok((await geometryWithoutDock())>withDock+150,'Turning the watermark off returns side-card space to the photo');
+assert.equal(await geometryWithoutDock(),withDock,'Enabling or disabling the overlay never takes photo width');
 async function geometryWithoutDock(){return page.evaluate(()=>document.querySelector('.photo-viewport').getBoundingClientRect().width);}
 await page.click('.watermark-section .segmented button:nth-child(2)');await page.waitForSelector(dock+' img');await settled();
 
@@ -111,6 +120,6 @@ await page.mouse.move(boundary.x,boundary.y,{label:'Scrolling within font option
 assert.equal(await page.evaluate(()=>document.querySelector('.settings-panel').scrollTop),boundary.panel);
 visibleTogether(await geometry());
 await page.selectOption('.language-select','zh-CN');
-assert.ok(await page.evaluate(()=>document.querySelector('.detail-heading').textContent.includes('实际水印效果')));
-console.log({screenshot:await page.screenshot({path:'/tmp/liubai-compact-watermark-verified.png'})});
+assert.ok(await page.evaluate(()=>document.querySelector('.detail-heading').getAttribute('aria-label').includes('收起水印预览')));
+console.log({screenshot:await page.screenshot({path:'/tmp/liubai-corner-watermark-verified.png'})});
 console.log('All watermark workspace checks passed. Photo/font/render replies were isolated fixtures; no model calls.');

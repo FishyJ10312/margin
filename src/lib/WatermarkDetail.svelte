@@ -15,6 +15,7 @@
  $: key=JSON.stringify({id:photo?.id,settings});
  $: refresh(key);
  $: image=view==='placement'&&overview?{src:overview.dataUrl,width:overview.width,height:overview.height}:{src:detail?.dataUrl??'',width:detail?.viewWidth??1,height:detail?.viewHeight??1};
+ $: positionLabel=busy?$t("同步中"):detail?`${detail.width} × ${detail.height} px · X ${detail.position.x} · Y ${detail.position.y}`:'';
  function refresh(_key:string){
   revision++;if(!photo||settings.watermark.kind==='none')return;
   if(photo.id!==shownPhoto){detail=null;error='';shownPhoto=photo.id;}
@@ -31,29 +32,26 @@
  }
  onDestroy(()=>{disposed=true;clearTimeout(timer);queued=null;});
 </script>
-<details class="watermark-detail" class:collapsed open={!collapsed} on:toggle={(event)=>oncollapse(!event.currentTarget.open)} aria-label={$t("实际水印效果")} aria-busy={busy}>
+<details class="watermark-detail" class:collapsed open={!collapsed} on:toggle={(event)=>oncollapse(!event.currentTarget.open)} on:wheel|stopPropagation aria-label={$t("实际水印效果")} aria-busy={busy}>
  <summary class="detail-heading" aria-label={$t(collapsed?"展开水印预览":"收起水印预览")} title={$t(collapsed?"展开水印预览":"收起水印预览")}>
-  <strong><ZoomIn size={13}/>{#if !collapsed}{$t("实际水印效果")}{/if}</strong>{#if !collapsed}<ChevronRight size={14}/>{/if}
+  <strong><ZoomIn size={12}/>{#if !collapsed}<span class="detail-font" title={settings.watermark.fontFamily??''}>{settings.watermark.kind==='text'?(settings.watermark.fontFamily||$t("内置思源黑体 · 支持中文")):'PNG'}</span>{/if}</strong>{#if !collapsed}<ChevronRight size={12}/>{/if}
  </summary>
  {#if !collapsed}
  <div class="detail-body">
- <span class="detail-font" title={settings.watermark.fontFamily??''}>{settings.watermark.kind==='text'?(settings.watermark.fontFamily||$t("内置思源黑体 · 支持中文")):'PNG'}</span>
- <div class="detail-image">{#if image.src}<FitImage src={image.src} width={image.width} height={image.height} {zoom} alt={$t("带周围照片与边框的实际水印预览")}/>{:else}<span>{$t(error)||$t("正在准备实际合成预览")}</span>{/if}</div>
-  <div class="detail-controls"><select aria-label={$t("水印局部预览范围")} bind:value={view} on:change={()=>zoom=1}><option value="detail">{$t("局部细节")}</option><option value="placement">{$t("整图位置")}</option></select><select aria-label={$t("水印局部放大倍数")} bind:value={zoom}><option value={1}>{$t("完整显示 · 100%")}</option><option value={2}>200%</option><option value={4}>400%</option></select></div>
- <p class="detail-position">{busy?$t("同步中"):detail?`${detail.width} × ${detail.height} px · X ${detail.position.x} · Y ${detail.position.y}`:''}</p>
+ <div class="detail-image" title={positionLabel}>{#if image.src}<FitImage src={image.src} width={image.width} height={image.height} {zoom} alt={$t("带周围照片与边框的实际水印预览")}/>{:else}<span>{$t(error)||$t("正在准备实际合成预览")}</span>{/if}</div>
+  <div class="detail-controls"><select aria-label={$t("水印局部预览范围")} bind:value={view} on:change={()=>zoom=1}><option value="detail">{$t("局部")}</option><option value="placement">{$t("整图")}</option></select><select aria-label={$t("水印局部放大倍数")} bind:value={zoom}><option value={1}>{$t("完整显示")}</option><option value={2}>200%</option><option value={4}>400%</option></select></div>
  {#if error}<p class="field-error">{$t(error)}</p>{/if}
  </div>
  {/if}
 </details>
 <style>
-.watermark-detail{flex:0 0 clamp(196px,23%,228px);align-self:center;min-inline-size:0;margin:12px 14px 12px 0;border:1px solid #d8e0d1;border-radius:8px;padding:9px 10px;background:#f8faf5;}
-.detail-heading{display:flex;align-items:center;justify-content:space-between;gap:5px;min-block-size:26px;color:#4d6342;cursor:pointer;list-style:none;outline-offset:4px;}
-.detail-heading::-webkit-details-marker{display:none;}.detail-heading strong{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:500;}
-.detail-body{display:flex;flex-direction:column;gap:7px;min-inline-size:0;margin-block-start:3px;}
-.detail-font{font-size:11px;color:#7d8975;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.detail-controls{display:flex;gap:5px;min-inline-size:0;}.detail-controls select{flex:1;inline-size:0;min-inline-size:0;padding:3px;font-size:10px;min-block-size:27px;}
-.detail-image{block-size:120px;min-inline-size:0;border:1px solid #dfe6d7;border-radius:6px;}.detail-image>span{display:block;padding:8px;font-size:11px;color:#849078;}
-.detail-position{font:9px ui-monospace,monospace;font-variant-numeric:tabular-nums;color:#819174;line-height:1.5;}
+.watermark-detail{position:absolute;inset-block-start:8px;inset-inline-end:8px;z-index:2;inline-size:160px;max-inline-size:calc(100% - 16px);margin:0;border:1px solid #d8e0d1;border-radius:6px;padding:6px;background:#f8faf5f5;box-shadow:0 2px 7px #24321b0d;}
+.detail-heading{display:flex;align-items:center;justify-content:space-between;gap:4px;min-block-size:20px;color:#4d6342;cursor:pointer;list-style:none;outline-offset:3px;}
+.detail-heading::-webkit-details-marker{display:none;}.detail-heading strong{display:flex;align-items:center;gap:4px;min-inline-size:0;font-weight:500;}.detail-heading :global(svg){flex-shrink:0;}
+.detail-body{display:flex;flex-direction:column;gap:4px;min-inline-size:0;margin-block-start:2px;}
+.detail-font{font-size:10px;color:#6a7961;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.detail-controls{display:flex;gap:4px;min-inline-size:0;}.detail-controls select{flex:1;inline-size:0;min-inline-size:0;height:22px;block-size:22px;padding:2px;font-size:9px;min-block-size:22px;}.detail-controls select:first-child{flex:0 0 56px;}
+.detail-image{block-size:72px;min-inline-size:0;border:1px solid #dfe6d7;border-radius:5px;}.detail-image>span{display:block;padding:4px;font-size:10px;color:#849078;}
 .field-error{margin:0;}
-.watermark-detail.collapsed{flex-basis:32px;padding:2px;margin-inline-end:8px;}.collapsed .detail-heading{justify-content:center;min-block-size:30px;}
+.watermark-detail.collapsed{inline-size:28px;padding:2px;}.collapsed .detail-heading{justify-content:center;min-block-size:22px;}
 </style>
