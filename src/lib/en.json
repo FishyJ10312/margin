@@ -77,6 +77,8 @@
   "完整显示 · 100%": "Fit all · 100%",
   "实际合成后的水印及周围区域": "Actual watermark composition and surrounding area",
   "实际水印效果": "Watermark in context",
+  "展开水印预览": "Expand watermark preview",
+  "收起水印预览": "Collapse watermark preview",
   "选字时预览保持可见；放大后可拖动查看": "Stays visible while choosing fonts. Zoom in and drag to inspect.",
   "宽": "Width",
   "导入 TTF / OTF / TTC 字体": "Import TTF / OTF / TTC font",

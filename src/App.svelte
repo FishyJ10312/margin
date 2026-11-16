@@ -117,6 +117,12 @@
   let fontsLoading = false;
   let fontsError = '';
   let watermarkWorkspaceShown = false;
+  let watermarkPreviewCollapsed = false;
+  try { watermarkPreviewCollapsed = localStorage.getItem('liubai.watermarkPreviewCollapsed') === 'true'; } catch { /* Use the expanded preview if storage is unavailable. */ }
+  function collapseWatermarkPreview(collapsed:boolean) {
+    watermarkPreviewCollapsed = collapsed;
+    try { localStorage.setItem('liubai.watermarkPreviewCollapsed',String(collapsed)); } catch { /* The current session remains usable. */ }
+  }
   const palette = [
     ['#FFFFFF','纯白'], ['#F3ECDD','奶油'], ['#DED5C4','燕麦'], ['#B7A58E','砂岩'], ['#8F877A','暖灰'], ['#171A17','墨黑'],
     ['#DDE5DC','雾绿'], ['#A5B59B','鼠尾草'], ['#67785E','橄榄'], ['#DBE5EC','雾蓝'], ['#7D96AA','灰蓝'], ['#344C60','深海'],
@@ -127,9 +133,10 @@
 
   $: selectedPhoto = photos.find((photo) => photo.id === selectedId) ?? null;
   $: watermarkPreviewVisible = desktop && !!selectedPhoto && settings.watermark.kind !== 'none';
-  $: if (watermarkPreviewVisible !== watermarkWorkspaceShown) {
-    watermarkWorkspaceShown = watermarkPreviewVisible;
-    if (watermarkPreviewVisible) void ensureWatermarkWorkspace();
+  $: watermarkWorkspaceNeeded = watermarkPreviewVisible && !watermarkPreviewCollapsed;
+  $: if (watermarkWorkspaceNeeded !== watermarkWorkspaceShown) {
+    watermarkWorkspaceShown = watermarkWorkspaceNeeded;
+    if (watermarkWorkspaceNeeded) void ensureWatermarkWorkspace();
   }
   $: isRunning = batch?.status === 'running';
   $: completedCount = batch?.items.filter((item) => item.status === 'completed').length ?? 0;
@@ -547,6 +554,7 @@
 
   <div class="workspace">
     <main class="content-area">
+     <div class="preview-workspace">
       <div class="viewer">
         {#if loading}
           <div class="empty-state"><LoaderCircle size={25} class="spin" /><p>{$t("正在载入工作区")}</p></div>
@@ -573,8 +581,9 @@
       </div>
 
       {#if watermarkPreviewVisible}
-        <WatermarkDetail photo={selectedPhoto} {settings} overview={preview} onlimits={(value)=>offsetLimits=value}/>
+        <WatermarkDetail photo={selectedPhoto} {settings} overview={preview} collapsed={watermarkPreviewCollapsed} oncollapse={collapseWatermarkPreview} onlimits={(value)=>offsetLimits=value}/>
       {/if}
+     </div>
 
       {#if batch && (batch.status === 'interrupted' || batch.status === 'cancelled') && pendingCount > 0}
         <div class="resume-banner"><RotateCcw size={15} /><span>{$t("有")} {pendingCount} {$t("张照片尚未完成")}</span><button class="text-button" disabled={starting} on:click={() => continueBatch('resume_batch')}>{$t("继续处理")}</button></div>
@@ -689,7 +698,7 @@
             <button class="watermark-file" disabled={!desktop} on:click={chooseWatermarkImage}><ImagePlus size={16} /><span>{settings.watermark.imagePath ? basename(settings.watermark.imagePath) : $t("选择 PNG 水印")}</span><ChevronDown size={13} /></button>
             <p class="field-help">{$t("支持透明背景，保留 Logo 原始比例")}</p>
           {/if}
-          <details class="advanced-watermark" on:toggle={(event) => { if (event.currentTarget.open) { void loadFonts(); void ensureWatermarkWorkspace(); } }}>
+          <details class="advanced-watermark" on:toggle={(event) => { if (event.currentTarget.open) { void loadFonts(); if(!watermarkPreviewCollapsed)void ensureWatermarkWorkspace(); } }}>
             <summary><ChevronDown size={14} />{$t("字体、大小与精确位置")}</summary>
             {#if settings.watermark.kind === 'text'}
               <FontPicker {fonts} selected={settings.watermark.fontFamily} onchange={(font)=>{settings.watermark.fontPath=font?.path||null;settings.watermark.fontFamily=font?.family??null;}}/>

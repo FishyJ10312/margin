@@ -1,13 +1,15 @@
 // Run with ego-browser nodejs. Uses the real UI and isolated native replies.
 import assert from 'node:assert/strict';
-const task=await taskSpace('Liubai watermark workspace');
+const task=await taskSpace('Liubai compact watermark preview');
 const page=task.page('p1');
 console.log({spaceId:task.spaceId});
-const dock='.content-area > .watermark-detail';
+const dock='.preview-workspace > .watermark-detail';
 async function viewport(width,height){await page.cdp('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:false});}
 async function settled(){await page.waitForFunction(()=>document.querySelector('.watermark-detail')?.getAttribute('aria-busy')==='false'&&document.querySelector('.watermark-detail img')?.complete);}
 async function prepare(query=''){
  await page.goto('http://127.0.0.1:1420/tests/ui/app.html'+query);
+ await page.waitForSelector(dock);
+ if(await page.evaluate(()=>!document.querySelector('.watermark-detail').open))await page.click('.watermark-detail > summary');
  await page.waitForSelector(dock+' img');await page.selectOption('.language-select','en');
  await settled();await page.click('.watermark-section details.advanced-watermark > summary');
  await page.waitForSelector('.font-picker [role=option]');
@@ -17,8 +19,9 @@ async function geometry(){return page.evaluate(()=>{
  return {dock:box('.watermark-detail'),photo:box('.photo-viewport'),panel:box('.settings-panel'),strip:box('.filmstrip-section'),list:box('.font-picker'),footer:box('.app-footer'),width:innerWidth,height:innerHeight,documentWidth:document.documentElement.scrollWidth};
 });}
 function visibleTogether(g){
- assert.ok(g.dock.x>=0&&g.dock.right<=g.panel.x&&g.dock.bottom<=g.strip.y,'Dock stays in the left workspace above the photo strip');
- assert.ok(g.photo.height>=100&&g.photo.bottom<=g.dock.y,'The full-photo viewer remains usable beside the persistent detail');
+ assert.ok(g.dock.x>=g.photo.right-1&&g.dock.right<=g.panel.x&&g.dock.bottom<=g.strip.y,'Close-up sits beside the photo without covering it');
+ assert.ok(g.dock.width<=230&&g.dock.height<=270,'The watermark preview stays a small card');
+ assert.ok(g.photo.height>=300,'Main photo keeps its full height, including at the smallest desktop size');
  assert.ok(g.list.y>=0&&g.list.bottom<=g.footer.y,'Keyboard font choices are visible');
  assert.ok(g.strip.bottom<=g.footer.y+1&&g.footer.bottom<=g.height+1,'Thumbnails and export controls fit the window');
  assert.equal(g.documentWidth,g.width,'No horizontal page overflow');
@@ -58,13 +61,32 @@ console.log('PASS: size, offsets, zoom and whole-image placement stay synchroniz
 
 for(const [width,height]of [[1180,800],[900,650]]){
  await viewport(width,height);await page.focus('.font-picker');await page.press('.font-picker','Home');await settled();
- visibleTogether(await geometry());
+ const sized=await geometry();assert.equal(sized.width,width);assert.equal(sized.height,height);visibleTogether(sized);
  console.log('PASS: photo, watermark, font list and export controls fit',width+'×'+height);
 }
-const withDock=(await geometry()).photo.height;
+const expanded=await geometry();
+const settingsBeforeCollapse=await page.evaluate(()=>JSON.stringify(window.__qa.requests.filter(r=>r.cmd==='get_preview').at(-1).args.settings));
+await page.click('.watermark-detail > summary');
+await page.waitForFunction(()=>!document.querySelector('.watermark-detail').open&&document.querySelector('.watermark-detail').classList.contains('collapsed'));
+const folded=await geometry();
+assert.ok(folded.dock.width<=34&&folded.photo.width>expanded.photo.width+140,'Collapsing returns the side-card width to the photo');
+assert.ok(Math.abs(folded.photo.height-expanded.photo.height)<=20,'Collapsing does not consume photo height');
+assert.equal(await page.evaluate(()=>document.activeElement===document.querySelector('.watermark-detail > summary')),true);
+assert.equal(await page.evaluate(()=>document.querySelector('.watermark-detail img')),null,'Collapsed close-up has no mounted image surface');
+assert.equal(await page.evaluate(()=>JSON.stringify(window.__qa.requests.filter(r=>r.cmd==='get_preview').at(-1).args.settings)),settingsBeforeCollapse,'Folding the preview must not disable or change the exported watermark');
+await page.reload();await page.waitForSelector(dock);await page.waitForFunction(()=>document.querySelector('.watermark-detail').getAttribute('aria-busy')==='false');
+assert.equal(await page.evaluate(()=>document.querySelector('.watermark-detail').open),false,'Collapsed preference survives reopening');
+await page.click('.watermark-section details.advanced-watermark > summary');await page.waitForSelector('.font-picker [role=option]');
+assert.equal(await page.evaluate(()=>window.__qa.requests.filter(r=>r.cmd.startsWith('plugin:window|')).length),0,'Collapsed preview must not enlarge the window when loading photos or fonts');
+await page.press('.watermark-detail > summary','Enter');await settled();
+assert.equal(await page.evaluate(()=>document.activeElement===document.querySelector('.watermark-detail > summary')),true);
+await page.waitForFunction(()=>window.__qa.windowControl.inner.width===2560);
+console.log('PASS: mouse/keyboard folding returns space, preserves the watermark, remembers preference and avoids enlargement while collapsed.');
+
+const withDock=(await geometry()).photo.width;
 await page.click('.watermark-section .segmented button:first-child');await page.waitForSelector(dock,{state:'hidden'});
-assert.ok((await geometryWithoutDock())>withDock+100,'Turning the watermark off returns space to the photo');
-async function geometryWithoutDock(){return page.evaluate(()=>document.querySelector('.photo-viewport').getBoundingClientRect().height);}
+assert.ok((await geometryWithoutDock())>withDock+150,'Turning the watermark off returns side-card space to the photo');
+async function geometryWithoutDock(){return page.evaluate(()=>document.querySelector('.photo-viewport').getBoundingClientRect().width);}
 await page.click('.watermark-section .segmented button:nth-child(2)');await page.waitForSelector(dock+' img');await settled();
 
 // Exercise Retina scaling and a secondary monitor with a negative desktop origin.
@@ -90,5 +112,5 @@ assert.equal(await page.evaluate(()=>document.querySelector('.settings-panel').s
 visibleTogether(await geometry());
 await page.selectOption('.language-select','zh-CN');
 assert.ok(await page.evaluate(()=>document.querySelector('.detail-heading').textContent.includes('实际水印效果')));
-console.log({screenshot:await page.screenshot({path:'/tmp/liubai-watermark-workspace-verified.png'})});
+console.log({screenshot:await page.screenshot({path:'/tmp/liubai-compact-watermark-verified.png'})});
 console.log('All watermark workspace checks passed. Photo/font/render replies were isolated fixtures; no model calls.');
