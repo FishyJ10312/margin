@@ -1,0 +1,46 @@
+// Vite must be running. Fixtures only; no real model or account usage.
+import assert from 'node:assert/strict';
+const task=await taskSpace('Liubai film borders 0.9.1');
+const page=task.page('p1');
+await page.goto('http://127.0.0.1:1420/tests/ui/app.html');
+await page.waitForSelector('.frame-entry-row button:not([disabled])');
+await page.selectOption('.language-select','en');
+await page.click("loc=role:button[name='Frame templates']");
+await page.waitForSelector('.style-card');
+await page.click("loc=role:button[name='Film']");
+await page.waitForFunction(()=>document.querySelectorAll('.style-card').length===12);
+console.log((await page.snapshot({scope:'full_page'})).slice(-2200));
+const ids=await page.evaluate(()=>[...document.querySelectorAll('[name=frame-choice]')].map(x=>x.value));
+assert.equal(new Set(ids).size,12);
+for(const id of ids){
+ await page.focus('input[value="'+id+'"]');await page.press('input[value="'+id+'"]','Space');
+ await page.waitForFunction(()=>document.querySelector('.preview-image')?.getAttribute('aria-busy')==='false');
+}
+assert.equal(await page.evaluate(()=>document.querySelector('.template-adjustments').open),false);
+await page.focus('input[value="scan-35mm"]');await page.press('input[value="scan-35mm"]','Space');
+await page.waitForFunction(()=>document.querySelector('.preview-image')?.getAttribute('aria-busy')==='false');
+await page.click('.template-adjustments > summary');
+await page.click('.template-adjustment-fields input[type=checkbox]');
+await page.focus('#film-texture');await page.press('#film-texture','Home');
+await page.waitForFunction(()=>window.__qa.requests.filter(x=>x.cmd==='get_preview').at(-1)?.args.settings.artwork?.design?.film?.texture===0&&window.__qa.requests.filter(x=>x.cmd==='get_preview').at(-1)?.args.settings.artwork?.design?.film?.labels===false);
+await page.click("loc=role:button[name='Apply selected style']");
+await page.waitForSelector('.templates-dialog',{state:'hidden'});
+await page.click('.saved-settings > summary');
+await page.click("loc=role:button[name='Save current frame as template']");
+await page.waitForSelector('#template-name');
+await page.fill('#template-name','QA scan detail settings');
+await page.click("loc=role:button[name='Save template']");
+await page.waitForFunction(()=>JSON.parse(localStorage.getItem('liubai.qa.templates')||'[]').some(x=>x.name==='QA scan detail settings'));
+let saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('liubai.qa.templates')).findLast(x=>x.name==='QA scan detail settings'));
+assert.equal(saved.settings.artwork.design.id,'scan-35mm');
+assert.deepEqual(saved.settings.artwork.design.film,{labels:false,texture:0});
+await page.click("loc=role:button[name='Close template library']");
+await page.click("loc=role:button[name='Frame templates']");
+await page.waitForSelector('.style-card');
+await page.click("loc=role:button[name='Film']");
+await page.focus('input[value="scan-instant"]');await page.press('input[value="scan-instant"]','Space');
+await page.click('.template-adjustments > summary');
+assert.equal(await page.evaluate(()=>[...document.querySelectorAll('.template-adjustments label')].some(x=>x.textContent==='Film edge labels')),false);
+assert.equal(await page.evaluate(()=>!!document.querySelector('#film-texture')),true);
+assert.equal(await page.evaluate(()=>window.__qa.requests.some(x=>/^generate_/.test(x.cmd))),false);
+console.log('PASS: twelve film choices; labels and grain update preview, apply and persist in a template; instant paper has no irrelevant label switch.');

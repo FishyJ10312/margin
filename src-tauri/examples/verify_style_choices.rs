@@ -60,7 +60,12 @@ fn main() -> Result<(), String> {
     )
     .map_err(|e| e.to_string())?;
     let mut timings = Vec::new();
-    for item in library.iter().take(8) {
+    let film_only = args.iter().any(|a| a == "--film-only");
+    for item in library
+        .iter()
+        .filter(|item| !film_only || item.category == "film")
+        .take(if film_only { usize::MAX } else { 8 })
+    {
         let mut s = item.settings.clone();
         s.ratio = settings.ratio.clone();
         s.border_percent = settings.border_percent;
@@ -80,7 +85,7 @@ fn main() -> Result<(), String> {
     if before.as_ref() != after.as_ref() {
         return Err("Source changed".into());
     }
-    let report = serde_json::json!({"styles":library.len(),"newStylesVerified":8,"photoPixelsUnchanged":true,"originalUnchanged":true,"previewDimensions":[l.width,l.height],"renders":timings});
+    let report = serde_json::json!({"styles":library.len(),"newStylesVerified":timings.len(),"photoPixelsUnchanged":true,"originalUnchanged":true,"previewDimensions":[l.width,l.height],"renders":timings});
     fs::write(
         out.join("local-verification.json"),
         serde_json::to_vec_pretty(&report).unwrap(),

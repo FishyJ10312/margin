@@ -304,6 +304,9 @@ pub fn draw_window(
     if let Some(frame) = &scene.frame_image {
         crate::frame_art::draw_window(canvas, frame, l, ox, oy)?;
     }
+    if let Some(d) = &scene.design {
+        crate::film::draw_window(canvas, d, l, ox, oy)?;
+    }
     let mut elements = scene.elements.clone();
     if let Some(d) = &scene.design {
         elements.extend(crate::designs::elements(d, l));
@@ -320,6 +323,10 @@ pub fn draw_window(
             p.map(|p| (e, p))
         })
         .collect();
+    if paths.is_empty() {
+        // Procedural film and bitmap frames need no transparent vector tiles.
+        return crate::stickers::draw_window(canvas, scene, l, ox, oy);
+    }
     for ty in ((oy / 256 * 256)..oy + canvas.height()).step_by(256) {
         for tx in ((ox / 256 * 256)..ox + canvas.width()).step_by(256) {
             let w = 256.min(l.width - tx);

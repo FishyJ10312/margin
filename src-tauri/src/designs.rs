@@ -13,6 +13,8 @@ pub struct DesignRecipe {
     pub intensity: f32,
     #[serde(default = "default_scale")]
     pub scale: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub film: Option<crate::film::FilmOptions>,
 }
 fn default_scale() -> f32 {
     1.
@@ -28,7 +30,7 @@ pub struct BuiltinFrame {
     pub settings: RenderSettings,
     pub thumbnail: String,
 }
-const SPECS: [(&str, &str, &str, &str, &str, &str, [&str; 3]); 21] = [
+const SPECS: [(&str, &str, &str, &str, &str, &str, [&str; 3]); 30] = [
     (
         "gallery",
         "摄影画廊",
@@ -82,6 +84,87 @@ const SPECS: [(&str, &str, &str, &str, &str, &str, [&str; 3]); 21] = [
         "暖白相纸、双层细边与底部短线，像一张整理好的暗房印相。",
         "#F5F0E5",
         ["#6D7067", "#B5A68B", "#D8CEBB"],
+    ),
+    (
+        "scan-35mm",
+        "35mm 全幅扫描",
+        "35mm Full Scan",
+        "film",
+        "圆角齿孔、片边微字与细微扫描颗粒，模拟完整底片。",
+        "#1C2325",
+        ["#D1B57D", "#040505", "#72513A"],
+    ),
+    (
+        "scan-amber",
+        "彩负暖边",
+        "Warm Color Negative",
+        "film",
+        "暖棕片基、琥珀色边缘与完整齿孔，像彩负扫描的留边。",
+        "#3A271D",
+        ["#E5A55E", "#060504", "#986C45"],
+    ),
+    (
+        "scan-bw",
+        "黑白底片扫描",
+        "Silver Negative",
+        "film",
+        "无齿孔的黑色片边、银灰片号与轻微不规则内缘。",
+        "#111413",
+        ["#D0D0C8", "#8D918B", "#050706"],
+    ),
+    (
+        "scan-120",
+        "120 中画幅",
+        "120 Medium Format",
+        "film",
+        "宽厚黑色片边、120 格式标记与简洁定位条，不添加齿孔。",
+        "#191C19",
+        ["#C7B782", "#7D8173", "#0B0F0D"],
+    ),
+    (
+        "scan-16mm",
+        "16mm 电影胶片",
+        "16mm Cine Scan",
+        "film",
+        "双侧单孔、电影片号与黑色扫描边，保留完整照片。",
+        "#292D29",
+        ["#DACB9D", "#050706", "#72624E"],
+    ),
+    (
+        "scan-8mm",
+        "Super 8 单孔",
+        "Super 8 Scan",
+        "film",
+        "单侧大齿孔与暖色片边微字，模拟 Super 8 的外观。",
+        "#312716",
+        ["#D6AE73", "#050403", "#83613D"],
+    ),
+    (
+        "scan-contact",
+        "暗房接触印样",
+        "Darkroom Contact",
+        "film",
+        "暖白纸上的黑色底片条、红色选片线与接触印样编号。",
+        "#EAE6DC",
+        ["#A65C4D", "#DFD9CC", "#242621"],
+    ),
+    (
+        "scan-slide",
+        "纸质幻灯片框",
+        "Cardboard Slide",
+        "film",
+        "米白装片卡、黑色开口细边与微小装片标记。",
+        "#DAD8CF",
+        ["#777466", "#F2EEE1", "#3B3C35"],
+    ),
+    (
+        "scan-instant",
+        "拍立得相纸",
+        "Instant Photo Paper",
+        "film",
+        "轻微纸张颗粒、较宽的下沿与干净相纸边，完整保留照片。",
+        "#D8D6CE",
+        ["#8F8B7E", "#F8F5E9", "#5F6057"],
     ),
     (
         "color-band",
@@ -229,6 +312,14 @@ pub fn validate(r: &DesignRecipe) -> Result<(), String> {
     {
         return Err("设计模板参数无效".into());
     }
+    if let Some(film) = &r.film {
+        if !crate::film::is_scan(&r.id)
+            || !film.texture.is_finite()
+            || !(0.0..=1.0).contains(&film.texture)
+        {
+            return Err("胶片质感参数无效".into());
+        }
+    }
     for c in &r.colors {
         crate::imaging::parse_color(c)?;
     }
@@ -237,7 +328,7 @@ pub fn validate(r: &DesignRecipe) -> Result<(), String> {
 pub fn settings(id: &str) -> Option<RenderSettings> {
     let s = SPECS.iter().find(|s| s.0 == id)?;
     let mut v = RenderSettings::default();
-    v.border_percent = 18.;
+    v.border_percent = if crate::film::is_scan(id) { 12. } else { 18. };
     v.frame_color = s.5.into();
     v.artwork = Some(ArtScene {
         design: Some(DesignRecipe {
@@ -245,6 +336,7 @@ pub fn settings(id: &str) -> Option<RenderSettings> {
             colors: s.6.map(String::from).to_vec(),
             intensity: 1.,
             scale: 1.,
+            film: crate::film::is_scan(id).then(crate::film::FilmOptions::default),
         }),
         ..Default::default()
     });

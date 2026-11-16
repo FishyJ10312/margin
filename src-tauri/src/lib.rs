@@ -15,6 +15,7 @@ pub mod codex_image;
 pub mod decoration;
 pub mod designs;
 pub mod frame_art;
+pub mod film;
 mod frame_opening;
 pub mod generated_art;
 pub mod image_api;

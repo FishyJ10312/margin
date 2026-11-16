@@ -628,6 +628,10 @@
         {#if settings.artwork}
          <details class="advanced-watermark"><summary><ChevronDown size={14}/>{$t('艺术边框调整')}</summary>
           {#if settings.artwork.design}
+           {#if settings.artwork.design.film}
+            {#if settings.artwork.design.id!=='scan-instant'}<label class="field-help"><input type="checkbox" bind:checked={settings.artwork.design.film.labels}/>{$t('片边标记')}</label>{/if}
+            <div class="field-title"><label for="applied-film-texture" class="field-label">{$t('扫描颗粒')}</label><output>{Math.round(settings.artwork.design.film.texture*100)}%</output></div><input id="applied-film-texture" type="range" min="0" max="1" step="0.05" bind:value={settings.artwork.design.film.texture}/>
+           {/if}
            <div class="field-title"><label for="art-strength" class="field-label">{$t('装饰强度')}</label><output>{Math.round(settings.artwork.design.intensity*100)}%</output></div><input id="art-strength" type="range" min="0.2" max="1.5" step="0.05" bind:value={settings.artwork.design.intensity}/>
            <div class="field-title"><label for="art-size" class="field-label">{$t('装饰大小')}</label><output>{Math.round((settings.artwork.design.scale??1)*100)}%</output></div><input id="art-size" type="range" min="0.2" max="1" step="0.05" value={settings.artwork.design.scale??1} on:input={e=>{if(settings.artwork?.design)settings.artwork.design.scale=Number(e.currentTarget.value);}}/>
            <div class="color-row">{#each settings.artwork.design.colors as color,i}<input class="color-picker" type="color" aria-label={$t('艺术配色 {0}',{0:i+1})} value={color} on:input={e=>{if(settings.artwork?.design)settings.artwork.design.colors[i]=e.currentTarget.value;}}/>{/each}</div>

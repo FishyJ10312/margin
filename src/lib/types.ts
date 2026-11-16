@@ -156,7 +156,7 @@ export interface OffsetLimits {minX:number;maxX:number;minY:number;maxY:number}
 export interface WatermarkDetail {dataUrl:string;viewWidth:number;viewHeight:number;watermarkBounds:{x:number;y:number;width:number;height:number};position:{x:number;y:number;width:number;height:number};width:number;height:number;limits:OffsetLimits}
 
 export interface ArtElement {kind:string;x:number;y:number;width:number;height:number;rotation:number;color:string;opacity:number;strokeWidth:number;filled:boolean;points:[number,number][]}
-export interface DesignRecipe {id:string;colors:string[];intensity:number;scale?:number}
+export interface DesignRecipe {id:string;colors:string[];intensity:number;scale?:number;film?:{labels:boolean;texture:number}|null}
 export interface Sticker {imagePath:string;anchor:string;scale:number;opacity:number;flipX?:boolean}
 export interface FrameImage {imagePath:string;reference:{width:number;height:number;x:number;y:number;photoWidth:number;photoHeight:number};opacity:number}
 export interface ArtScene {elements:ArtElement[];design?:DesignRecipe|null;reference?:unknown;stickers?:Sticker[];frameImage?:FrameImage|null}

@@ -68,10 +68,14 @@
      <label class="field-label" for="style-margin">{$t('边框比例')} · {candidate.borderPercent}%</label><input id="style-margin" type="range" min="0" max="30" step="0.5" bind:value={candidate.borderPercent}/>
      <div class="style-colors"><label for="style-base">{$t('底色')}</label><input id="style-base" type="color" bind:value={candidate.frameColor}/><input aria-label={$t('边框颜色')} class="hex-input" bind:value={candidate.frameColor} maxlength="7" pattern="#[0-9a-fA-F]{6}"/></div>
      {#if candidate.artwork?.design}
+      {#if candidate.artwork.design.film}
+       {#if candidate.artwork.design.id!=='scan-instant'}<label class="layout-check"><input type="checkbox" bind:checked={candidate.artwork.design.film.labels}/>{$t('片边标记')}</label>{/if}
+       <label class="field-label" for="film-texture">{$t('扫描颗粒')} · {Math.round(candidate.artwork.design.film.texture*100)}%</label><input id="film-texture" type="range" min="0" max="1" step="0.05" bind:value={candidate.artwork.design.film.texture}/>
+      {/if}
       <div class="style-colors"><span>{$t('图案配色')}</span>{#each candidate.artwork.design.colors as color,i}<input type="color" aria-label={$t('样式颜色 {0}',{0:i+1})} value={color} on:input={e=>{if(candidate?.artwork?.design)candidate.artwork.design.colors[i]=e.currentTarget.value;}}/>{/each}</div>
-      <div class="palette-shortcuts"><button type="button" on:click={()=>palette(['#303B3E','#8B9291','#D5D7D1'])}>{$t('黑白')}</button><button type="button" on:click={()=>palette(['#315D69','#C27B5E','#D6C3A0'])}>{$t('海岸')}</button><button type="button" on:click={()=>palette(['#755D48','#B88D67','#D5C4A8'])}>{$t('暖调')}</button></div>
+      {#if !candidate.artwork.design.film}<div class="palette-shortcuts"><button type="button" on:click={()=>palette(['#303B3E','#8B9291','#D5D7D1'])}>{$t('黑白')}</button><button type="button" on:click={()=>palette(['#315D69','#C27B5E','#D6C3A0'])}>{$t('海岸')}</button><button type="button" on:click={()=>palette(['#755D48','#B88D67','#D5C4A8'])}>{$t('暖调')}</button></div>{/if}
       <label class="field-label" for="style-intensity">{$t('装饰强度')} · {Math.round(candidate.artwork.design.intensity*100)}%</label><input id="style-intensity" type="range" min="0.2" max="1.5" step="0.05" bind:value={candidate.artwork.design.intensity}/>
-      <label class="field-label" for="style-scale">{$t('图案尺寸')} · {Math.round((candidate.artwork.design.scale??1)*100)}%</label><input id="style-scale" type="range" min="0.2" max="1" step="0.05" value={candidate.artwork.design.scale??1} on:input={e=>{if(candidate?.artwork?.design)candidate.artwork.design.scale=Number(e.currentTarget.value);}}/>
+      <label class="field-label" for="style-scale">{$t(candidate.artwork.design.film?'片边尺寸':'图案尺寸')} · {Math.round((candidate.artwork.design.scale??1)*100)}%</label><input id="style-scale" type="range" min="0.2" max="1" step="0.05" value={candidate.artwork.design.scale??1} on:input={e=>{if(candidate?.artwork?.design)candidate.artwork.design.scale=Number(e.currentTarget.value);}}/>
      {/if}
      {#if candidate.artwork?.frameImage}<p class="field-help">{$t('按实际透明开口贴合照片，原照片始终完整保留。')}</p>{/if}
      </div></details>
