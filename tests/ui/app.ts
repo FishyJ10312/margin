@@ -8,8 +8,10 @@ const source=document.createElement('canvas');source.width=900;source.height=600
 const settings:RenderSettings={...defaultSettings,watermark:{...defaultSettings.watermark,kind:'text',text:'留白 FishyJ',color:'#182e39',region:'border',marginPercent:1}};settings.borderPercent=12;
 let templates=JSON.parse(localStorage.getItem('liubai.qa.templates')??'[]');const requests:any[]=[];
 const fonts=[{family:'Noto Sans SC',path:'',chinese:true,bundled:true},{family:'站酷小薇体',path:'',chinese:true,bundled:true},{family:'Ma Shan Zheng',path:'',chinese:true,bundled:true},{family:'Times New Roman',path:'/synthetic/font.ttf',chinese:false,bundled:false}];
+if(new URLSearchParams(location.search).has('long-font-list'))fonts.push(...Array.from({length:80},(_,i)=>({family:'QA Font '+String(i+1).padStart(2,'0'),path:'/synthetic/font-'+i+'.ttf',chinese:true,bundled:false})));
 function composed(s:RenderSettings,detail=false){const c=document.createElement('canvas');c.width=detail?500:780;c.height=detail?160:600;const p=c.getContext('2d')!;p.fillStyle=s.frameColor;p.fillRect(0,0,c.width,c.height);p.drawImage(source,detail?0:40,detail?-200:40,detail?500:700,detail?333:467);p.font=`${detail?26:18}px serif`;p.globalAlpha=s.watermark.opacity;p.fillStyle=s.watermark.color;p.fillText(s.watermark.text,detail?30+s.watermark.offsetX/20:500,detail?100+s.watermark.offsetY/10:560);return c.toDataURL();}
 const params=new URLSearchParams(location.search);
+if(params.has('legacy-scroll')){const supports=CSS.supports.bind(CSS);CSS.supports=((property:string,value?:string)=>property==='overscroll-behavior'?false:value===undefined?supports(property):supports(property,value)) as typeof CSS.supports;}
 let releaseStartup=()=>{};
 const startupGate=params.has('slow-start')?new Promise<void>(resolve=>releaseStartup=resolve):Promise.resolve();
 const importControl={stateRequested:false,stateReturned:false,importDelay:0,activeImports:0,maxImports:0};
