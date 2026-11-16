@@ -44,7 +44,7 @@ impl Default for AiConfig {
             model: String::new(),
             codex_path: None,
             style_direction: "呼应照片色调，图案只在留白".into(),
-            design_density: "balanced".into(),
+            design_density: "auto".into(),
             language: "zh-CN".into(),
             image: crate::image_api::ImageConfig::default(),
             chatgpt_account_id: None,
@@ -263,7 +263,7 @@ impl ArtAi {
         *self.cancel.lock().map_err(|_| "无法启动模型任务")? = Some(tx);
         let work = async {
             let frame_direction = if config.frame_design.notes.trim().is_empty() {
-                "按用户所选风格设计照片边框"
+                "根据照片的内容、构图与色彩，自主设计一幅有明确创意和视觉层次的边框，照片是视觉中心"
             } else {
                 &config.frame_design.notes
             };
@@ -471,7 +471,10 @@ fn validate_config(c: &AiConfig) -> Result<(), String> {
         return Err("界面语言无效".into());
     }
     if c.style_direction.chars().count() > 1500
-        || !matches!(c.design_density.as_str(), "simple" | "balanced" | "rich")
+        || !matches!(
+            c.design_density.as_str(),
+            "auto" | "simple" | "balanced" | "rich"
+        )
     {
         return Err("设计方向过长或装饰密度无效".into());
     }
@@ -526,6 +529,9 @@ fn design_prompt(c: &AiConfig, p: &AiPhoto) -> Result<String, String> {
         return crate::refinement::prompt(c, p);
     }
     let density = match c.design_density.as_str() {
+        "auto" => {
+            "根据照片构图与用户描述自主决定疏密、图形数量与布局，不强制套用固定风格或预设元素数量"
+        }
         "simple" => "建议3–8个元素，留白为主，不强迫凑数",
         "rich" => "20–36个元素，曲线交织且有卡通或手绘插画",
         _ => "建议8–18个元素，简约有细节，不强迫凑数",

@@ -96,7 +96,8 @@
   let stagedModelConfig:AiConfig|null=null;
   function configureModels(current:AiConfig|null=null){stagedModelConfig=current?clone(current):null;returnToModel=modelOpen;modelOpen=false;modelsConfigOpen=true;}
   function closeModelConfig(){modelsConfigOpen=false;if(returnToModel&&selectedPhoto)modelOpen=true;else stagedModelConfig=null;returnToModel=false;}
-  let modelMode:'design'|'refine'|'image'='design';
+  let modelMode:'design'|'refine'|'image'='image';
+  let modelTarget:'frame'|'sticker'='frame';
   let sessionApiKey = '',sessionApiOrigin='';
   let sessionImageApiKey='',sessionImageApiOrigin='';
   let previousArt: {ratio:RenderSettings['ratio'];frameColor:string;borderPercent:number;decoration:FrameDecoration;artwork?:ArtScene|null} | null = null;
@@ -590,17 +591,13 @@
     </main>
 
     <aside class="settings-panel" aria-label={$t("边框和水印设置")}>
-      <button class="button secondary compact template-library" disabled={!initialized||loading} on:click={()=>openTemplates()}><Bookmark size={14}/>{$t("边框模板库")} <span>{frameTemplates.length}</span></button>
-      <div class="preset-row">
-        <Bookmark size={15} />
-        <select aria-label={$t("个人预设")} value={selectedPreset} on:change={(event) => applyPreset(event.currentTarget.value)}><option value="">{presets.length ? $t("选择个人预设") : $t("我的预设")}</option>{#each presets as preset}<option value={preset.id}>{preset.name}</option>{/each}</select>
-        {#if selectedPreset}<button class="icon-button" on:click={deletePreset} disabled={!desktop} title={$t("删除此预设")} aria-label={$t("删除此预设")}><Trash2 size={14} /></button>{/if}
-        <button class="icon-button" on:click={() => { namingPreset = !namingPreset; presetName = $t("我的方案 {0}", {0:presets.length + 1}); }} disabled={!desktop || !!localError} title={$t("保存当前设置为预设")} aria-label={$t("保存当前设置为预设")}><Plus size={16} /></button>
-      </div>
-      {#if namingPreset}<form class="preset-form" on:submit|preventDefault={savePreset}><input aria-label={$t("预设名称")} bind:value={presetName} maxlength="40" placeholder={$t("预设名称")} /><button class="button secondary compact" type="submit" disabled={savingPreset || !presetName.trim()}>{savingPreset ? $t("保存中") : $t("保存")}</button></form>{/if}
 
       <section class="setting-section">
         <div class="section-heading"><h2>{$t("边框")}</h2><span>{$t("应用到全部照片")}</span></div>
+        <div class="frame-entry-row">
+          <button class="button secondary compact" disabled={!desktop||!initialized||loading||importing||isRunning} on:click={()=>openTemplates()}><Bookmark size={15}/>{$t('边框模板')}</button>
+          <button class="button secondary compact" disabled={!desktop||!selectedPhoto||importing||isRunning} on:click={()=>{modelMode='image';modelTarget='frame';modelOpen=true;}}><WandSparkles size={15}/>{$t('AI 设计')}</button>
+        </div>
         <label class="field-label" for="ratio">{$t("最终比例")}</label>
         <div class="ratio-row">
           <select id="ratio" value={ratioMode} on:change={(event) => changeRatio(event.currentTarget.value)}><option value="auto">{$t("自动 · 四边等宽")}</option>{#each ratioPresets as ratio}<option value={ratio}>{ratio.replace(':', ' : ')}</option>{/each}<option value="custom">{$t("自定义比例")}</option></select>
@@ -628,9 +625,6 @@
           {/if}
           <p class="field-help">{$t("只装饰留白，轻一点更耐看；0% 留白时可能没有可绘制区域")}</p>
         </details>
-        <button class="button secondary compact style-picker-trigger" disabled={!desktop||importing||isRunning} on:click={()=>openTemplates()}><Bookmark size={15}/>{$t('选择边框样式')}</button>
-        <button class="button secondary compact art-trigger" disabled={!desktop || !selectedPhoto || importing || isRunning} on:click={()=>{modelMode='image';modelOpen=true;}}><WandSparkles size={15} />{$t('AI 自定义设计')}</button>
-        <button class="text-button save-current-frame" disabled={!desktop||!initialized||loading||!!localError} on:click={()=>openTemplates(settings)}><Bookmark size={12}/>{$t("保存当前边框为模板")}</button>
         {#if settings.artwork}
          <details class="advanced-watermark"><summary><ChevronDown size={14}/>{$t('艺术边框调整')}</summary>
           {#if settings.artwork.design}
@@ -646,12 +640,20 @@
            <label class="field-help"><input type="checkbox" bind:checked={sticker.flipX}/>{$t('水平翻转素材')}</label>
           {/each}
           <p class="field-help">{$t('图案保持等比缩放，仅绘制在边框内；窄边框会缩小装饰。')}</p>
+          <button type="button" class="text-button" on:click={()=>settings.artwork=null}>{$t('移除艺术图层')}</button>
          </details>
-         <button class="text-button" disabled={!selectedPhoto||isRunning||importing} on:click={()=>{modelMode='refine';modelOpen=true;}}><WandSparkles size={12}/>{$t('精修一次')}</button>
+         {#if !settings.artwork.design}<button class="text-button" disabled={!selectedPhoto||isRunning||importing} on:click={()=>{modelMode='refine';modelOpen=true;}}><WandSparkles size={12}/>{$t('精修一次')}</button>{/if}
         {/if}
-        <button class="text-button image-art-trigger" disabled={!selectedPhoto||isRunning||importing} on:click={()=>{modelMode='design';modelOpen=true;}}>{$t('线条与几何方案')}</button>
-        {#if settings.artwork?.elements.length}<p class="field-help">{$t("艺术图层 ·")} {settings.artwork.elements.length} {$t("个设计元素")} <button class="text-button" on:click={()=>settings.artwork=null}>{$t("移除")}</button></p>{/if}
-        {#if settings.artwork&&!settings.artwork.elements.length}<button class="text-button" on:click={()=>settings.artwork=null}>{$t('移除艺术图层')}</button>{/if}
+        <details class="advanced-watermark saved-settings"><summary><ChevronDown size={14}/>{$t('保存与预设')}</summary>
+          <button class="text-button save-current-frame" disabled={!desktop||!initialized||loading||!!localError} on:click={()=>openTemplates(settings)}><Bookmark size={12}/>{$t('保存当前边框为模板')}</button>
+      <div class="preset-row">
+        <Bookmark size={15} />
+        <select aria-label={$t("个人预设")} value={selectedPreset} on:change={(event) => applyPreset(event.currentTarget.value)}><option value="">{presets.length ? $t("选择个人预设") : $t("我的预设")}</option>{#each presets as preset}<option value={preset.id}>{preset.name}</option>{/each}</select>
+        {#if selectedPreset}<button class="icon-button" on:click={deletePreset} disabled={!desktop} title={$t("删除此预设")} aria-label={$t("删除此预设")}><Trash2 size={14} /></button>{/if}
+        <button class="icon-button" on:click={() => { namingPreset = !namingPreset; presetName = $t("我的方案 {0}", {0:presets.length + 1}); }} disabled={!desktop || !!localError} title={$t("保存当前设置为预设")} aria-label={$t("保存当前设置为预设")}><Plus size={16} /></button>
+      </div>
+      {#if namingPreset}<form class="preset-form" on:submit|preventDefault={savePreset}><input aria-label={$t("预设名称")} bind:value={presetName} maxlength="40" placeholder={$t("预设名称")} /><button class="button secondary compact" type="submit" disabled={savingPreset || !presetName.trim()}>{savingPreset ? $t("保存中") : $t("保存")}</button></form>{/if}
+        </details>
         {#if previousArt}<button class="text-button" on:click={undoArt}><RotateCcw size={12} />{$t("撤销上次智能配框")}</button>{/if}
       </section>
 
@@ -734,7 +736,7 @@
   <footer><span>{$t("每张照片独立处理，失败不影响其他照片")}</span>{#if batch?.outputDirectory}<button class="button secondary compact" on:click={() => batch && revealPath(batch.outputDirectory)}><FolderOpen size={14} />{$t("打开文件夹")}</button>{/if}</footer>
 </dialog>
 
-{#if modelOpen && selectedPhoto}<ModelPanel initialMode={modelMode} initialConfig={stagedModelConfig} onconfigure={configureModels} photo={selectedPhoto} count={photos.length} baseSettings={settings} onsavetemplate={saveSuggestedFrame} bind:apiKey={sessionApiKey} bind:apiOrigin={sessionApiOrigin} bind:imageApiKey={sessionImageApiKey} bind:imageApiOrigin={sessionImageApiOrigin} onapply={applyArt} onclose={()=>{modelOpen=false;stagedModelConfig=null;}} />{/if}
+{#if modelOpen && selectedPhoto}<ModelPanel bind:initialMode={modelMode} bind:imageTarget={modelTarget} initialConfig={stagedModelConfig} onconfigure={configureModels} photo={selectedPhoto} count={photos.length} baseSettings={settings} onsavetemplate={saveSuggestedFrame} bind:apiKey={sessionApiKey} bind:apiOrigin={sessionApiOrigin} bind:imageApiKey={sessionImageApiKey} bind:imageApiOrigin={sessionImageApiOrigin} onapply={applyArt} onclose={()=>{modelOpen=false;stagedModelConfig=null;}} />{/if}
 {#if modelsConfigOpen}<ModelsConfig initialConfig={stagedModelConfig} bind:apiKey={sessionApiKey} bind:apiOrigin={sessionApiOrigin} bind:imageApiKey={sessionImageApiKey} bind:imageApiOrigin={sessionImageApiOrigin} onsaved={value=>stagedModelConfig=clone(value)} onclose={closeModelConfig}/>{/if}
 
 {#if templatesOpen}<FrameTemplates photo={selectedPhoto} currentPreview={preview?.dataUrl||''} currentSettings={settings} templates={frameTemplates} draft={templateDraft} initialName={templateName} onsave={saveFrameTemplate} ondelete={deleteFrameTemplate} onapply={applyFrameTemplate} onclose={()=>templatesOpen=false}/>{/if}

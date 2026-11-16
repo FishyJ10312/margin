@@ -1,6 +1,8 @@
-# 留白 / Liubai 0.8.2
+# 留白 / Liubai 0.9.0
 
 在本机给照片添加边框和个人水印。支持批量导入 JPG、PNG、HEIC／HEIF，另存 JPG 或 PNG。
+
+0.9.0 精简边框工作流：主界面只保留“边框模板”和“AI 设计”两个入口。胶片边界、黑金底片、暖白相纸等共 21 款本地模板直接预览选用，不调用模型；模板细节和保存／预设默认折叠。AI 不再要求先选风格，以照片和自由描述为创作依据；描述可留空，布局与密度默认交给模型决定，额外限制与生成方式收在“更多选项”。模型连接统一在模型配置中维护；精修仅在已有生成作品时出现。旧版风格设置仍可读取，新请求不会继承隐藏的固定风格限制。详见 [精简说明](docs/simple-framing-0.9.md)。
 
 0.8.2 完善整组拖入：在 Finder 或 Windows 文件资源管理器中多选照片，拖到窗口任意位置即可批量导入。启动载入时先接收并排队，连续拖入的组依次处理；显示本组照片数量、等待状态和导入／跳过数量。重复文件去重，非图片和目录过滤，坏图单独报错。预览原有照片和设置保持不变。
 
@@ -53,6 +55,7 @@ npm run desktop
 - Mac：`bash scripts/build-macos.sh`，构建仅包含 HEIC 解码所需原生库的桌面版，并将依赖放入应用包。
 - Windows：在 PowerShell 执行 `powershell -ExecutionPolicy Bypass -File scripts/build-windows.ps1`。脚本安装项目目录内的 vcpkg 解码依赖，生成 NSIS 安装包。
 - 界面检查：`npm run check` 与 `npm run build`。整组拖入的隔离回归可在运行 Vite 后执行 `ego-browser nodejs < tests/ui/drop-acceptance.mjs`；该测试模拟系统拖放事件与本机调用，不等于实机系统拖放验收。
+- 精简工作流隔离验收：运行 Vite 后执行 `ego-browser nodejs < tests/ui/design-acceptance.mjs`（模拟模型回复与本机连接，不使用真实额度）。
 - 核心测试：`cargo test --manifest-path src-tauri/Cargo.toml --lib`。
 - 可选 Pi 适配器与启动测试：`node --test tests/pi-bridge.test.mjs tests/startup.test.ts`（Node 22.18+ 的内置 TypeScript 支持；测试使用隔离假 SDK，不读取实际 Pi 凭据或调用模型）。
 - 生成合成验收照片：安装 Pillow 后执行 `python3 scripts/make-fixtures.py`。
@@ -85,7 +88,7 @@ Tauri、Svelte、Rust image、COSMIC Text、Little CMS、libheif、libde265，�
 
 “简约花纹”内含纸感、亚麻、点阵、细条纹、柔波纹和角标，可调整强度、大小与颜色。原生核心只绘制边框，预览和导出采用相同几何定义，蒙版仅占 64 KiB。
 
-“根据照片智能配框”默认检测本机 Codex CLI，复用现有登录；也可填写 OpenAI 兼容视觉接口。用户先看到最长边 768 px 的等比缩略图，主动确认后才生成三套建议。可选择交织线条、童趣卡通、植物手绘、海洋小鱼、几何艺术，或自由输入设计方向与装饰密度。建议包含白名单内的配色、边框百分比、基础纹样和有界的贝塞尔曲线/手绘图案场景；本机完成绘制，选用方案后可撤销。
+“根据照片智能配框”默认检测本机 Codex CLI，复用现有登录；也可填写 OpenAI 兼容视觉接口。用户先看到最长边 768 px 的等比缩略图，主动确认后才生成三套建议。在“AI 设计 → 更多选项 → 可编辑线条与图形”中输入设计方向，可留空由模型依据照片自主设计，也可指定装饰密度。建议包含白名单内的配色、边框百分比、基础纹样和有界的贝塞尔曲线/手绘图案场景；本机完成绘制，选用方案后可撤销。
 
 Codex 使用 `codex exec --ephemeral --sandbox read-only --ignore-user-config`，关闭命令执行、额外图片读取、多代理和网页搜索；在临时目录传入缩略图及 JSON Schema，结束后清理。可指定模型和 Codex 可执行文件。需要支持这些选项的 CLI；本机验证版本为 0.169.0-alpha.11.1。CLI 本身不随安装包打包。这里复用现有账户登录，推理仍由所连模型服务完成；没有直接控制 Codex 桌面窗口，也没有显式调用设计 Skill。
 

@@ -132,6 +132,6 @@ fn main() -> Result<(), String> {
             serde_json::json!({"seconds":start.elapsed().as_secs_f64(),"width":result.width,"height":result.height,"summary":result.summary})
         );
     }
-    println!("11 designs × 3 orientations exported locally");
+    println!("{} designs × 3 orientations exported locally", library.len());
     Ok(())
 }

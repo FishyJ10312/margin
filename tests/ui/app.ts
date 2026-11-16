@@ -19,6 +19,8 @@ let chatgptState:any={accounts:[],activeId:null,diagnostic:null};
 let cancelLogin:((reason:string)=>void)|null=null;
 const authControl={scenario:'success'};
 let aiConfig={...structuredClone(defaultAiConfig),styleDirection:'Ocean line art'};
+if(params.has('legacy-style')){aiConfig.frameDesign.style='film';aiConfig.frameDesign.placement='corners';aiConfig.designDensity='rich';}
+if(params.has('connected-chatgpt')){chatgptState={accounts:[{id:'fixture-account',label:'Fixture account',connected:true,planEnabled:true}],activeId:'fixture-account'};Object.assign(aiConfig,{provider:'chatgpt',chatgptAccountId:'fixture-account',model:'mock-vision-balanced'});}
 if(new URLSearchParams(location.search).has('refine')){settings.artwork={elements:[{kind:'curve',x:0,y:0,width:100,height:100,rotation:0,color:'#457982',opacity:.8,strokeWidth:2,filled:false,points:[[100,80],[250,130],[400,40],[550,90]]}]};aiConfig={...aiConfig,provider:'pi',piProvider:'openai',model:'gpt-6.1-sol'};}
 const piAccounts:Record<string,boolean>={openai:true};
 const callbacks=new Map<number,Function>(),listeners=new Map<number,{event:string;handler:number}>();

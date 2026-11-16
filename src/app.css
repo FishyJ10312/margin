@@ -286,3 +286,9 @@ button svg { flex: 0 0 auto; }
 .style-picker-trigger{width:100%;margin-block:12px 6px;background:#edf3e5;border-color:#c8d7bc;}
 
 .filmstrip-section.has-import-status{flex-basis:auto;min-height:138px;}.filmstrip-heading{gap:10px;}.filmstrip-heading>.filmstrip-hint{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;}.import-feedback{display:flex;align-items:center;gap:6px;min-width:0;font-size:11px;line-height:17px;color:var(--green);margin-bottom:4px;}.import-feedback:empty{display:none;}.import-feedback svg{flex:0 0 auto;}
+
+/* Primary framing choices stay together; detail controls remain on demand. */
+.frame-entry-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-block:4px 20px;}
+.frame-entry-row .button{min-width:0;justify-content:center;}
+.saved-settings .preset-row{padding-block:12px;border:0;}
+.saved-settings .save-current-frame{margin-block:12px 0;}

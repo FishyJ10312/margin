@@ -28,7 +28,7 @@ pub struct BuiltinFrame {
     pub settings: RenderSettings,
     pub thumbnail: String,
 }
-const SPECS: [(&str, &str, &str, &str, &str, &str, [&str; 3]); 19] = [
+const SPECS: [(&str, &str, &str, &str, &str, &str, [&str; 3]); 21] = [
     (
         "gallery",
         "摄影画廊",
@@ -60,10 +60,28 @@ const SPECS: [(&str, &str, &str, &str, &str, &str, [&str; 3]); 19] = [
         "film-edge",
         "胶片边界",
         "Film Edge",
-        "photo",
+        "film",
         "炭黑底、细相纸边与克制的片孔标记，保持清晰的照片边界。",
         "#242928",
         ["#EEE5D1", "#B59B69", "#5F706C"],
+    ),
+    (
+        "film-negative",
+        "黑金底片",
+        "Amber Negative",
+        "film",
+        "深黑底片边、琥珀色细线与四角定位标记，干净利落。",
+        "#1C201F",
+        ["#D2AA68", "#EEE4CF", "#77694E"],
+    ),
+    (
+        "film-paper",
+        "暖白相纸",
+        "Warm Photo Paper",
+        "film",
+        "暖白相纸、双层细边与底部短线，像一张整理好的暗房印相。",
+        "#F5F0E5",
+        ["#6D7067", "#B5A68B", "#D8CEBB"],
     ),
     (
         "color-band",
@@ -414,7 +432,7 @@ pub fn elements(r: &DesignRecipe, l: Layout) -> Vec<ArtElement> {
         out: Vec::new(),
     };
     match r.id.as_str() {
-        "gallery" | "double-mat" | "keyline" | "film-edge" => {
+        "gallery" | "double-mat" | "keyline" | "film-edge" | "film-negative" | "film-paper" => {
             let (px, py, pw, ph) = (
                 l.x as f32,
                 l.y as f32,
@@ -459,7 +477,7 @@ pub fn elements(r: &DesignRecipe, l: Layout) -> Vec<ArtElement> {
                     false,
                     if r.id == "gallery" { 0.35 } else { 0.6 },
                 );
-                if r.id == "keyline" {
+                if r.id == "keyline" || r.id == "film-paper" {
                     a.rect(
                         px - gutter,
                         py - gutter,
@@ -478,6 +496,28 @@ pub fn elements(r: &DesignRecipe, l: Layout) -> Vec<ArtElement> {
                         a.rect(fx, top * 0.35, fw, fh, 0, true, 0.3);
                         a.rect(fx, h - bottom * 0.35 - fh, fw, fh, 0, true, 0.3);
                     }
+                }
+                if r.id == "film-negative" {
+                    let mark = gutter * 0.55;
+                    for (cx, cy) in [
+                        (px - gutter, py - gutter),
+                        (px + pw + gutter, py - gutter),
+                        (px - gutter, py + ph + gutter),
+                        (px + pw + gutter, py + ph + gutter),
+                    ] {
+                        a.line(&[[cx - mark, cy], [cx + mark, cy]], 0, 0.5, false, false);
+                        a.line(&[[cx, cy - mark], [cx, cy + mark]], 0, 0.5, false, false);
+                    }
+                }
+                if r.id == "film-paper" {
+                    a.line(&[[w * 0.39, y], [w * 0.61, y]], 1, 0.55, false, false);
+                    a.line(
+                        &[[w * 0.46, y + band * 0.07], [w * 0.54, y + band * 0.07]],
+                        0,
+                        0.3,
+                        false,
+                        false,
+                    );
                 }
             }
         }
