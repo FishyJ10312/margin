@@ -9,12 +9,14 @@ const settings:RenderSettings={...defaultSettings,watermark:{...defaultSettings.
 let templates=JSON.parse(localStorage.getItem('liubai.qa.templates')??'[]');const requests:any[]=[];
 const fonts=[{family:'Noto Sans SC',path:'',chinese:true,bundled:true},{family:'站酷小薇体',path:'',chinese:true,bundled:true},{family:'Ma Shan Zheng',path:'',chinese:true,bundled:true},{family:'Times New Roman',path:'/synthetic/font.ttf',chinese:false,bundled:false}];
 if(new URLSearchParams(location.search).has('long-font-list'))fonts.push(...Array.from({length:80},(_,i)=>({family:'QA Font '+String(i+1).padStart(2,'0'),path:'/synthetic/font-'+i+'.ttf',chinese:true,bundled:false})));
-function composed(s:RenderSettings,detail=false){const c=document.createElement('canvas');c.width=detail?500:780;c.height=detail?160:600;const p=c.getContext('2d')!;p.fillStyle=s.frameColor;p.fillRect(0,0,c.width,c.height);p.drawImage(source,detail?0:40,detail?-200:40,detail?500:700,detail?333:467);p.font=`${detail?26:18}px serif`;p.globalAlpha=s.watermark.opacity;p.fillStyle=s.watermark.color;p.fillText(s.watermark.text,detail?30+s.watermark.offsetX/20:500,detail?100+s.watermark.offsetY/10:560);return c.toDataURL();}
+function composed(s:RenderSettings,detail=false){const c=document.createElement('canvas');c.width=detail?500:780;c.height=detail?160:600;const p=c.getContext('2d')!;p.fillStyle=s.frameColor;p.fillRect(0,0,c.width,c.height);p.drawImage(source,detail?0:40,detail?-200:40,detail?500:700,detail?333:467);const family=s.watermark.fontFamily==='Ma Shan Zheng'?'cursive':['Times New Roman','站酷小薇体'].includes(s.watermark.fontFamily??'')?'serif':'sans-serif';p.font=`${s.watermark.fontFamily==='Times New Roman'?'italic ':''}${detail?s.watermark.sizePercent*9:18}px ${family}`;p.globalAlpha=s.watermark.opacity;p.fillStyle=s.watermark.color;p.fillText(s.watermark.text,detail?30+s.watermark.offsetX/20:500,detail?100+s.watermark.offsetY/10:560);return c.toDataURL();}
 const params=new URLSearchParams(location.search);
 if(params.has('legacy-scroll')){const supports=CSS.supports.bind(CSS);CSS.supports=((property:string,value?:string)=>property==='overscroll-behavior'?false:value===undefined?supports(property):supports(property,value)) as typeof CSS.supports;}
 let releaseStartup=()=>{};
 const startupGate=params.has('slow-start')?new Promise<void>(resolve=>releaseStartup=resolve):Promise.resolve();
 const importControl={stateRequested:false,stateReturned:false,importDelay:0,activeImports:0,maxImports:0};
+const detailControl={delay:0,active:0,maxActive:0,rendered:[] as {settings:RenderSettings;dataUrl:string}[]};
+const windowControl={scale:2,inner:{width:2360,height:1600},outer:{width:2360,height:1648},position:{x:100,y:80},area:{position:{x:0,y:48},size:{width:3200,height:1952}},fullscreen:false,maximized:false,rejectResize:false};
 let fixturePhotos=params.has('empty')?[]:[{id:'synthetic',name:'synthetic-landscape.png',path:'/synthetic/photo.png',width:900,height:600,thumbnail}];
 let id=Date.now();
 let chatgptState:any={accounts:[],activeId:null,diagnostic:null};
@@ -32,6 +34,15 @@ function emit(event:string,payload:any){for(const [eventId,v]of listeners)if(v.e
 Object.assign(window,{__TAURI_INTERNALS__:{metadata:{currentWindow:{label:'main'},currentWebview:{label:'main'}},transformCallback:(callback:Function)=>{const key=id++;callbacks.set(key,callback);return key;},unregisterCallback:(key:number)=>callbacks.delete(key),invoke:async(cmd:string,args:any={})=>{
  requests.push({cmd,args,time:performance.now()});if(requests.length>300)requests.shift();
  await new Promise(r=>setTimeout(r,15));
+ if(cmd==='plugin:window|is_fullscreen')return windowControl.fullscreen;
+ if(cmd==='plugin:window|is_maximized')return windowControl.maximized;
+ if(cmd==='plugin:window|scale_factor')return windowControl.scale;
+ if(cmd==='plugin:window|inner_size')return {...windowControl.inner};
+ if(cmd==='plugin:window|outer_size')return {...windowControl.outer};
+ if(cmd==='plugin:window|outer_position')return {...windowControl.position};
+ if(cmd==='plugin:window|current_monitor')return {name:'Fixture screen',scaleFactor:windowControl.scale,position:windowControl.area.position,size:windowControl.area.size,workArea:windowControl.area};
+ if(cmd==='plugin:window|set_size'){if(windowControl.rejectResize)throw 'Fixture window manager declined';const size=args.value.toJSON().Physical;windowControl.outer={width:size.width+windowControl.outer.width-windowControl.inner.width,height:size.height+windowControl.outer.height-windowControl.inner.height};windowControl.inner=size;return;}
+ if(cmd==='plugin:window|set_position'){windowControl.position=args.value.toJSON().Physical;return;}
  if(cmd==='get_state'){importControl.stateRequested=true;await startupGate;importControl.stateReturned=true;return {settings,presets:[],frameTemplates:structuredClone(templates),photos:structuredClone(fixturePhotos),batch:null,warnings:[]};}
  if(cmd==='import_photos'){
   importControl.activeImports++;importControl.maxImports=Math.max(importControl.maxImports,importControl.activeImports);
@@ -42,7 +53,10 @@ Object.assign(window,{__TAURI_INTERNALS__:{metadata:{currentWindow:{label:'main'
  }
 
  if(cmd==='get_preview')return {dataUrl:composed(args.settings),width:1080,height:780,photoBounds:{x:90,y:90,width:900,height:600},warning:null};
- if(cmd==='get_watermark_detail')return {dataUrl:composed(args.settings,true),width:160,height:26,viewWidth:500,viewHeight:160,watermarkBounds:{x:30,y:60,width:160,height:26},position:{x:450+args.settings.watermark.offsetX,y:720+args.settings.watermark.offsetY,width:160,height:26},limits:{minX:-450,maxX:150,minY:-80,maxY:40}};
+ if(cmd==='get_watermark_detail'){
+  detailControl.active++;detailControl.maxActive=Math.max(detailControl.maxActive,detailControl.active);
+  try{await new Promise(r=>setTimeout(r,detailControl.delay));const dataUrl=composed(args.settings,true);detailControl.rendered.push({settings:structuredClone(args.settings),dataUrl});return {dataUrl,width:160,height:26,viewWidth:500,viewHeight:160,watermarkBounds:{x:30,y:60,width:160,height:26},position:{x:450+args.settings.watermark.offsetX,y:720+args.settings.watermark.offsetY,width:160,height:26},limits:{minX:-450,maxX:150,minY:-80,maxY:40}};}finally{detailControl.active--;}
+ }
  if(cmd==='list_fonts')return fonts;
  if(cmd==='list_builtin_frames')return structuredClone(gallery);
  if(cmd==='save_frame_template'){const v={id:'template-'+id++,name:args.name,settings:{...args.settings,watermark:{...defaultSettings.watermark},export:defaultSettings.export},thumbnail};templates=[...templates,v];localStorage.setItem('liubai.qa.templates',JSON.stringify(templates));return v;}
@@ -78,5 +92,5 @@ Object.assign(window,{__TAURI_INTERNALS__:{metadata:{currentWindow:{label:'main'
  if(cmd==='plugin:event|unlisten'){listeners.delete(args.eventId);return;}
  return null;
 }}});
-Object.assign(window,{__qa:{requests,fonts,authControl,importControl,releaseStartup:()=>releaseStartup(),dragEnter:(paths:string[])=>emit('tauri://drag-enter',{paths,position:{x:100,y:100}}),dragLeave:()=>emit('tauri://drag-leave',{}),drop:(paths:string[])=>{emit('tauri://drag-enter',{paths,position:{x:100,y:100}});emit('tauri://drag-drop',{paths,position:{x:100,y:100}});},get dropReady(){return [...listeners.values()].some(v=>v.event==='tauri://drag-leave');},get aiConfig(){return structuredClone(aiConfig);},get chatgptState(){return structuredClone(chatgptState);}}});
+Object.assign(window,{__qa:{requests,fonts,authControl,importControl,detailControl,windowControl,releaseStartup:()=>releaseStartup(),dragEnter:(paths:string[])=>emit('tauri://drag-enter',{paths,position:{x:100,y:100}}),dragLeave:()=>emit('tauri://drag-leave',{}),drop:(paths:string[])=>{emit('tauri://drag-enter',{paths,position:{x:100,y:100}});emit('tauri://drag-drop',{paths,position:{x:100,y:100}});},get dropReady(){return [...listeners.values()].some(v=>v.event==='tauri://drag-leave');},get aiConfig(){return structuredClone(aiConfig);},get chatgptState(){return structuredClone(chatgptState);}}});
 mount(App,{target:document.querySelector('#app')!});

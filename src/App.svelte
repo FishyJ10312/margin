@@ -19,6 +19,7 @@
   import FrameTemplates from './lib/FrameTemplates.svelte';
   import {language} from './lib/i18n';
   import {startupDeadline} from './lib/startup';
+  import {ensureWatermarkWorkspace} from './lib/window-layout';
   import type {OffsetLimits,AiConfig} from './lib/types';
   import {
     defaultSettings,
@@ -115,6 +116,7 @@
   let fonts: FontOption[] = [];
   let fontsLoading = false;
   let fontsError = '';
+  let watermarkWorkspaceShown = false;
   const palette = [
     ['#FFFFFF','纯白'], ['#F3ECDD','奶油'], ['#DED5C4','燕麦'], ['#B7A58E','砂岩'], ['#8F877A','暖灰'], ['#171A17','墨黑'],
     ['#DDE5DC','雾绿'], ['#A5B59B','鼠尾草'], ['#67785E','橄榄'], ['#DBE5EC','雾蓝'], ['#7D96AA','灰蓝'], ['#344C60','深海'],
@@ -124,6 +126,11 @@
 
 
   $: selectedPhoto = photos.find((photo) => photo.id === selectedId) ?? null;
+  $: watermarkPreviewVisible = desktop && !!selectedPhoto && settings.watermark.kind !== 'none';
+  $: if (watermarkPreviewVisible !== watermarkWorkspaceShown) {
+    watermarkWorkspaceShown = watermarkPreviewVisible;
+    if (watermarkPreviewVisible) void ensureWatermarkWorkspace();
+  }
   $: isRunning = batch?.status === 'running';
   $: completedCount = batch?.items.filter((item) => item.status === 'completed').length ?? 0;
   $: failedCount = batch?.items.filter((item) => item.status === 'failed').length ?? 0;
@@ -565,6 +572,10 @@
         {/if}
       </div>
 
+      {#if watermarkPreviewVisible}
+        <WatermarkDetail photo={selectedPhoto} {settings} overview={preview} onlimits={(value)=>offsetLimits=value}/>
+      {/if}
+
       {#if batch && (batch.status === 'interrupted' || batch.status === 'cancelled') && pendingCount > 0}
         <div class="resume-banner"><RotateCcw size={15} /><span>{$t("有")} {pendingCount} {$t("张照片尚未完成")}</span><button class="text-button" disabled={starting} on:click={() => continueBatch('resume_batch')}>{$t("继续处理")}</button></div>
       {/if}
@@ -678,7 +689,7 @@
             <button class="watermark-file" disabled={!desktop} on:click={chooseWatermarkImage}><ImagePlus size={16} /><span>{settings.watermark.imagePath ? basename(settings.watermark.imagePath) : $t("选择 PNG 水印")}</span><ChevronDown size={13} /></button>
             <p class="field-help">{$t("支持透明背景，保留 Logo 原始比例")}</p>
           {/if}
-          <details class="advanced-watermark" on:toggle={(event) => { if (event.currentTarget.open) void loadFonts(); }}>
+          <details class="advanced-watermark" on:toggle={(event) => { if (event.currentTarget.open) { void loadFonts(); void ensureWatermarkWorkspace(); } }}>
             <summary><ChevronDown size={14} />{$t("字体、大小与精确位置")}</summary>
             {#if settings.watermark.kind === 'text'}
               <FontPicker {fonts} selected={settings.watermark.fontFamily} onchange={(font)=>{settings.watermark.fontPath=font?.path||null;settings.watermark.fontFamily=font?.family??null;}}/>
@@ -701,7 +712,6 @@
             <p class="field-help">{$t("相对所选位置，正值向右 / 向下；按原图像素计算，缩图时同步缩放")}</p>
             <button class="text-button" on:click={() => { settings.watermark.offsetX = 0; settings.watermark.offsetY = 0; }}><RotateCcw size={12} />{$t("重置偏移")}</button>
           </details>
-          {#if selectedPhoto&&desktop}<WatermarkDetail photo={selectedPhoto} {settings} overview={preview} onlimits={(value)=>offsetLimits=value}/>{/if}
         {/if}
       </section>
 
