@@ -54,9 +54,12 @@
   let initialized = false;
   let loading = true;
   let importing = false;
+  let importingCount = 0;
+  let importReport: { added: number; skipped: number } | null = null;
   let starting = false;
   let cancelling = false;
   let dragActive = false;
+  let dragCount = 0;
   let notices: string[] = [];
   let fatalError = '';
   let preview: PreviewResult | null = null;
@@ -166,7 +169,7 @@
       selectedId = photos[0]?.id ?? '';
       if (state.batch) acceptBatch(state.batch);
       outputDirectory = batch?.outputDirectory ?? '';
-      notices = state.warnings ?? [];
+      notices = [...new Set([...notices, ...(state.warnings ?? [])])];
       syncControls();
       initialized = true;
     } catch (error) {
@@ -188,17 +191,26 @@
       return;
     }
     let disposed = false;
-    const register = async () => {
+    const registerProgress = async () => {
       const offProgress = await listen<BatchSnapshot>('batch-progress', ({ payload }) => acceptBatch(payload));
       if (disposed) offProgress(); else unlisteners.push(offProgress);
+    };
+    const registerDrop = async () => {
       const offDrop = await getCurrentWebviewWindow().onDragDropEvent(({ payload }) => {
+        if (disposed) return;
+        if (payload.type === 'enter') dragCount = payload.paths.length;
         if (payload.type === 'enter' || payload.type === 'over') dragActive = true;
         else dragActive = false;
         if (payload.type === 'drop') void importPaths(payload.paths);
+        if (payload.type === 'leave' || payload.type === 'drop') dragCount = 0;
       });
       if (disposed) offDrop(); else unlisteners.push(offDrop);
     };
-    void initialize().then(()=>{if(!disposed&&initialized)return register();}).catch((error) => { notices = [...notices, $t("拖入照片暂不可用：{0}", {0:errorMessage(error)})]; });
+    // Accept drops before loading the workspace; importPaths queues early groups.
+    // A progress-listener failure must not disable file import.
+    void registerProgress().catch(error=>{if(!disposed)notices=[...notices,errorMessage(error)];});
+    void registerDrop().catch(error=>{if(!disposed)notices=[...notices,$t("拖入照片暂不可用：{0}",{0:errorMessage(error)})];})
+      .then(()=>{if(!disposed)return initialize();});
     return () => { disposed = true; };
   });
 
@@ -296,18 +308,22 @@
 
   async function importPaths(paths: string[]) {
     if (!desktop || !paths.length) return;
-    if (!initialized || loading || importing) { pendingImports = [...pendingImports, ...paths]; return; }
+    if (!initialized || loading || importing) { pendingImports = [...new Set([...pendingImports, ...paths])]; return; }
     importing = true;
+    importingCount = paths.length;
+    importReport = null;
     try {
       const result = await invoke<ImportResult>('import_photos', { paths });
       const existing = new Set(photos.map((photo) => photo.id));
       const added = result.photos.filter((photo) => !existing.has(photo.id));
       photos = [...photos, ...added];
       if (!selectedId && photos.length) selectedId = photos[0].id;
+      importReport = { added: added.length, skipped: Math.max(0, paths.length - added.length) };
       if (result.errors.length) notices = [...notices, ...result.errors];
     } catch (error) { notices = [...notices, errorMessage(error)]; }
     finally {
       importing = false;
+      importingCount = 0;
       if (pendingImports.length) {
         const nextPaths = pendingImports;
         pendingImports = [];
@@ -541,7 +557,7 @@
           <div class="empty-state">
             <div class="empty-frame"><ImageIcon size={35} strokeWidth={1.15} /><span></span></div>
             <h2>{$t("给照片留一点空间")}</h2>
-            <p>{$t("拖入照片，或选择文件开始")}</p>
+            <p>{$t("拖入一组照片，或选择多个文件开始")}</p>
             <button class="button primary" on:click={choosePhotos} disabled={!desktop || importing || loading || !initialized}><ImagePlus size={17} />{$t("选择照片")}</button>
             <span class="empty-formats">JPG · PNG · HEIC</span>
           </div>
@@ -553,8 +569,13 @@
       {/if}
       {#if batch?.error}<div class="resume-banner batch-error" role="alert"><AlertCircle size={15} /><span>{$t(batch.error)}</span></div>{/if}
 
-      <section class="filmstrip-section" aria-label={$t("已导入的照片")}>
-        <div class="filmstrip-heading"><span>{$t("照片")} <span class="count">{photos.length}</span></span>{#if photos.length}<button class="text-button muted" disabled={isRunning} on:click={() => removePhotos(photos.map((photo) => photo.id))}>{$t("清空列表")}</button>{:else}<span class="filmstrip-hint">{$t("支持一次添加多张")}</span>{/if}</div>
+      <section class="filmstrip-section" class:has-import-status={importing||pendingImports.length>0||importReport!==null} aria-label={$t("已导入的照片")}>
+        <div class="filmstrip-heading"><span>{$t("照片")} <span class="count">{photos.length}</span></span><span class="filmstrip-hint">{$t("可将一组照片拖入窗口任意位置")}</span>{#if photos.length}<button class="text-button muted" disabled={isRunning} on:click={() => removePhotos(photos.map((photo) => photo.id))}>{$t("清空列表")}</button>{/if}</div>
+        <div class="import-feedback" role="status" aria-live="polite" aria-atomic="true">
+          {#if importing}<LoaderCircle size={12} class="spin"/><span>{$t("正在导入 {0} 张照片…",{0:importingCount})}{#if pendingImports.length}{' · ' }{$t("另有 {0} 张排队",{0:pendingImports.length})}{/if}</span>
+          {:else if pendingImports.length}<span>{$t("已接收 {0} 张照片，载入后导入",{0:pendingImports.length})}</span>
+          {:else if importReport}<CheckCircle2 size={12}/><span>{$t("已添加 {0} 张照片",{0:importReport.added})}{#if importReport.skipped}{' · ' }{$t("跳过 {0} 个重复、不支持或无法读取的文件",{0:importReport.skipped})}{/if}</span>{/if}
+        </div>
         <div class="filmstrip">
           {#each photos as photo (photo.id)}
             {@const job = batch?.items.find((item) => item.photoId === photo.id)}
@@ -704,7 +725,7 @@
       {:else}<button class="button primary export-button" on:click={startBatch} disabled={!desktop || !initialized || !photos.length || !!localError || !!previewError || starting || importing}>{#if starting}<LoaderCircle size={16} class="spin" />{:else}<Download size={17} />{/if}{starting ? $t("准备导出") : $t("导出{0}", {0:photos.length ? $t(" {0} 张", {0:photos.length}) : $t(" 照片")})}</button>{/if}
     </div>
   </footer>
-  {#if dragActive}<div class="drop-overlay"><div><ImagePlus size={30} strokeWidth={1.5} /><strong>{$t("松开以添加照片")}</strong><span>JPG、PNG、HEIC</span></div></div>{/if}
+  {#if dragActive}<div class="drop-overlay"><div><ImagePlus size={30} strokeWidth={1.5} /><strong>{$t(dragCount?'松开以添加 {0} 张照片':'松开以添加一组照片',{0:dragCount})}</strong><span>JPG · PNG · HEIC · HEIF</span><span>{$t(importing||loading?'会自动排队，随后逐张导入':'支持多选拖入，原照片保留在原位置')}</span></div></div>{/if}
 </div>
 
 <dialog bind:this={jobDialog} class="job-dialog">

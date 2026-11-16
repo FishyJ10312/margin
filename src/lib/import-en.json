@@ -1,0 +1,13 @@
+{
+  "拖入一组照片，或选择多个文件开始": "Drop a group of photos, or select multiple files to start",
+  "可将一组照片拖入窗口任意位置": "Drop a group of photos anywhere in the window",
+  "正在导入 {0} 张照片…": "Importing photos · {0}…",
+  "另有 {0} 张排队": "Queued: {0}",
+  "已接收 {0} 张照片，载入后导入": "Photos received: {0} · Waiting for the workspace",
+  "已添加 {0} 张照片": "Photos added: {0}",
+  "跳过 {0} 个重复、不支持或无法读取的文件": "Skipped {0} duplicate, unsupported or unreadable files",
+  "松开以添加 {0} 张照片": "Release to add photos · {0}",
+  "松开以添加一组照片": "Release to add a group of photos",
+  "会自动排队，随后逐张导入": "Photos will queue and import one at a time",
+  "支持多选拖入，原照片保留在原位置": "Drop multiple photos together. Originals stay in their current location."
+}

@@ -9,6 +9,11 @@ const settings:RenderSettings={...defaultSettings,watermark:{...defaultSettings.
 let templates=JSON.parse(localStorage.getItem('liubai.qa.templates')??'[]');const requests:any[]=[];
 const fonts=[{family:'Noto Sans SC',path:'',chinese:true,bundled:true},{family:'站酷小薇体',path:'',chinese:true,bundled:true},{family:'Ma Shan Zheng',path:'',chinese:true,bundled:true},{family:'Times New Roman',path:'/synthetic/font.ttf',chinese:false,bundled:false}];
 function composed(s:RenderSettings,detail=false){const c=document.createElement('canvas');c.width=detail?500:780;c.height=detail?160:600;const p=c.getContext('2d')!;p.fillStyle=s.frameColor;p.fillRect(0,0,c.width,c.height);p.drawImage(source,detail?0:40,detail?-200:40,detail?500:700,detail?333:467);p.font=`${detail?26:18}px serif`;p.globalAlpha=s.watermark.opacity;p.fillStyle=s.watermark.color;p.fillText(s.watermark.text,detail?30+s.watermark.offsetX/20:500,detail?100+s.watermark.offsetY/10:560);return c.toDataURL();}
+const params=new URLSearchParams(location.search);
+let releaseStartup=()=>{};
+const startupGate=params.has('slow-start')?new Promise<void>(resolve=>releaseStartup=resolve):Promise.resolve();
+const importControl={stateRequested:false,stateReturned:false,importDelay:0,activeImports:0,maxImports:0};
+let fixturePhotos=params.has('empty')?[]:[{id:'synthetic',name:'synthetic-landscape.png',path:'/synthetic/photo.png',width:900,height:600,thumbnail}];
 let id=Date.now();
 let chatgptState:any={accounts:[],activeId:null,diagnostic:null};
 let cancelLogin:((reason:string)=>void)|null=null;
@@ -23,7 +28,15 @@ function emit(event:string,payload:any){for(const [eventId,v]of listeners)if(v.e
 Object.assign(window,{__TAURI_INTERNALS__:{metadata:{currentWindow:{label:'main'},currentWebview:{label:'main'}},transformCallback:(callback:Function)=>{const key=id++;callbacks.set(key,callback);return key;},unregisterCallback:(key:number)=>callbacks.delete(key),invoke:async(cmd:string,args:any={})=>{
  requests.push({cmd,args,time:performance.now()});if(requests.length>300)requests.shift();
  await new Promise(r=>setTimeout(r,15));
- if(cmd==='get_state')return {settings,presets:[],frameTemplates:structuredClone(templates),photos:new URLSearchParams(location.search).has('empty')?[]:[{id:'synthetic',name:'synthetic-landscape.png',path:'/synthetic/photo.png',width:900,height:600,thumbnail}],batch:null,warnings:[]};
+ if(cmd==='get_state'){importControl.stateRequested=true;await startupGate;importControl.stateReturned=true;return {settings,presets:[],frameTemplates:structuredClone(templates),photos:structuredClone(fixturePhotos),batch:null,warnings:[]};}
+ if(cmd==='import_photos'){
+  importControl.activeImports++;importControl.maxImports=Math.max(importControl.maxImports,importControl.activeImports);
+  try{await new Promise(r=>setTimeout(r,importControl.importDelay));const added=[],errors=[];
+   for(const path of args.paths as string[]){if(path.includes('corrupt')){errors.push('corrupt.jpg: test-only damaged image');continue;}if(!/\.(jpe?g|png|heic|heif)$/i.test(path)||fixturePhotos.some(p=>p.path===path))continue;const photo={id:'import-'+id++,name:path.split(/[\\/]/).pop()!,path,width:900,height:600,thumbnail};fixturePhotos.push(photo);added.push(photo);}
+   return {photos:added,errors};
+  }finally{importControl.activeImports--;}
+ }
+
  if(cmd==='get_preview')return {dataUrl:composed(args.settings),width:1080,height:780,photoBounds:{x:90,y:90,width:900,height:600},warning:null};
  if(cmd==='get_watermark_detail')return {dataUrl:composed(args.settings,true),width:160,height:26,viewWidth:500,viewHeight:160,watermarkBounds:{x:30,y:60,width:160,height:26},position:{x:450+args.settings.watermark.offsetX,y:720+args.settings.watermark.offsetY,width:160,height:26},limits:{minX:-450,maxX:150,minY:-80,maxY:40}};
  if(cmd==='list_fonts')return fonts;
@@ -55,9 +68,11 @@ Object.assign(window,{__TAURI_INTERNALS__:{metadata:{currentWindow:{label:'main'
  if(cmd==='generate_complete_frame')return {imagePath:'/mock/owned-complete-frame.png',thumbnail,width:1024,height:1024,summary:'A complete beach illustration with waves, umbrellas and shells'};
  if(cmd==='generate_handdrawn')return {imagePath:'/mock/owned-art.png',thumbnail,width:1024,height:1024,summary:'Original watercolor fish and coral illustration'};
  if(cmd==='generate_art_frames')return (args.token==='refine'?[1]:[1,2,3]).map(n=>({title:'Design '+n,rationale:'Ocean-inspired line work',frameColor:'#F3ECDD',borderPercent:12,decoration:defaultSettings.decoration,artwork:{elements:[{kind:'curve',points:[[10,20],[250,60],[750,30],[990,50]],x:0,y:0,width:100,height:100,rotation:0,color:'#457982',opacity:.8,strokeWidth:2,filled:false}]}}));
+ if(cmd==='plugin:event|listen'&&params.has('fail-progress')&&args.event==='batch-progress')throw 'Fixture progress listener unavailable';
+ if(cmd==='plugin:event|listen'&&params.has('fail-drop')&&args.event==='tauri://drag-enter')throw 'Fixture drop listener unavailable';
  if(cmd==='plugin:event|listen'){const eventId=id++;listeners.set(eventId,{event:args.event,handler:args.handler});return eventId;}
  if(cmd==='plugin:event|unlisten'){listeners.delete(args.eventId);return;}
  return null;
 }}});
-Object.assign(window,{__qa:{requests,fonts,authControl,get aiConfig(){return structuredClone(aiConfig);},get chatgptState(){return structuredClone(chatgptState);}}});
+Object.assign(window,{__qa:{requests,fonts,authControl,importControl,releaseStartup:()=>releaseStartup(),dragEnter:(paths:string[])=>emit('tauri://drag-enter',{paths,position:{x:100,y:100}}),dragLeave:()=>emit('tauri://drag-leave',{}),drop:(paths:string[])=>{emit('tauri://drag-enter',{paths,position:{x:100,y:100}});emit('tauri://drag-drop',{paths,position:{x:100,y:100}});},get dropReady(){return [...listeners.values()].some(v=>v.event==='tauri://drag-leave');},get aiConfig(){return structuredClone(aiConfig);},get chatgptState(){return structuredClone(chatgptState);}}});
 mount(App,{target:document.querySelector('#app')!});

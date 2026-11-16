@@ -5,7 +5,8 @@ import modelConfigEnglish from './model-config-en.json';
 import refinementEnglish from './refinement-en.json';
 import artFrameEnglish from './art-frame-en.json';
 import frameStyleEnglish from './frame-style-en.json';
-const english={...baseEnglish,...chatgptEnglish,...modelConfigEnglish,...refinementEnglish,...artFrameEnglish,...frameStyleEnglish};
+import importEnglish from './import-en.json';
+const english={...baseEnglish,...chatgptEnglish,...modelConfigEnglish,...refinementEnglish,...artFrameEnglish,...frameStyleEnglish,...importEnglish};
 export type Language='zh-CN'|'en';
 let initial:Language='en';
 try{const saved=localStorage.getItem('liubai.language');if(saved==='en'||saved==='zh-CN')initial=saved;}catch{/* Storage may be unavailable during a browser preview. */}

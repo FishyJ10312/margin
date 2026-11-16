@@ -1,6 +1,8 @@
-# 留白 / Liubai 0.8.1
+# 留白 / Liubai 0.8.2
 
 在本机给照片添加边框和个人水印。支持批量导入 JPG、PNG、HEIC／HEIF，另存 JPG 或 PNG。
+
+0.8.2 完善整组拖入：在 Finder 或 Windows 文件资源管理器中多选照片，拖到窗口任意位置即可批量导入。启动载入时先接收并排队，连续拖入的组依次处理；显示本组照片数量、等待状态和导入／跳过数量。重复文件去重，非图片和目录过滤，坏图单独报错。预览原有照片和设置保持不变。
 
 0.8.1 默认使用英文界面；右上角语言图标可切换 English／简体中文，并记住用户选择。已有的语言选择会保留。
 
@@ -24,7 +26,7 @@
 
 ## 使用
 
-1. 打开桌面版，点击“添加照片”或将照片拖入窗口。
+1. 打开桌面版，在 Finder／文件资源管理器中多选一组照片并拖入窗口任意位置，或点击“添加照片”多选文件。
 2. 选择最终比例，调整边框百分比和颜色。可选 18 色色盘、自由选色或照片滴管；滴管保留左侧 6× 原像素放大镜，并在鼠标旁实时跟随。照片完整保留，不裁切、不拉伸。
 3. 按需开启文字水印或透明 PNG 水印，可设置位置、大小、透明度；高级设置默认折叠。内置思源黑体、站酷小薇、马善政三种中文字体，也可搜索本机字体或导入 TTF／OTF／TTC；选中字体后按 ↑ ↓ 切换。水平、垂直滑块按原图像素微调位置。
 4. 选择输出目录，点击批量导出。失败项可单独重试，取消后可继续未完成任务。
@@ -50,7 +52,7 @@ npm run desktop
 
 - Mac：`bash scripts/build-macos.sh`，构建仅包含 HEIC 解码所需原生库的桌面版，并将依赖放入应用包。
 - Windows：在 PowerShell 执行 `powershell -ExecutionPolicy Bypass -File scripts/build-windows.ps1`。脚本安装项目目录内的 vcpkg 解码依赖，生成 NSIS 安装包。
-- 界面检查：`npm run check` 与 `npm run build`。
+- 界面检查：`npm run check` 与 `npm run build`。整组拖入的隔离回归可在运行 Vite 后执行 `ego-browser nodejs < tests/ui/drop-acceptance.mjs`；该测试模拟系统拖放事件与本机调用，不等于实机系统拖放验收。
 - 核心测试：`cargo test --manifest-path src-tauri/Cargo.toml --lib`。
 - 可选 Pi 适配器与启动测试：`node --test tests/pi-bridge.test.mjs tests/startup.test.ts`（Node 22.18+ 的内置 TypeScript 支持；测试使用隔离假 SDK，不读取实际 Pi 凭据或调用模型）。
 - 生成合成验收照片：安装 Pillow 后执行 `python3 scripts/make-fixtures.py`。

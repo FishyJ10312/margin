@@ -1,6 +1,6 @@
 [package]
 name = "liubai"
-version = "0.8.1"
+version = "0.8.2"
 description = "Local photo frames and watermarks"
 authors = ["FishyJ"]
 edition = "2021"
