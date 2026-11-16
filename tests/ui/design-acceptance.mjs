@@ -8,6 +8,7 @@ const modelCalls=()=>page.evaluate(()=>window.__qa.requests.filter(r=>/^generate
 async function openAI(query=''){
  await page.goto('http://127.0.0.1:1420/tests/ui/app.html'+query);
  await page.waitForSelector('.frame-entry-row button:not([disabled])');
+ await page.selectOption('select.language-select','en');
  await page.click("loc=role:button[name='AI design']");
  await page.waitForSelector('#style-direction',{state:'visible'});
 }
