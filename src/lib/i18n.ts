@@ -11,8 +11,9 @@ import filmStyleEnglish from './film-style-en.json';
 import galleryEnglish from './gallery-en.json';
 import accountEnglish from './account-en.json';
 import agentEnglish from './agent-en.json';
+import cameraEnglish from './camera-en.json';
 import {brand} from './brand';
-const english={...baseEnglish,...chatgptEnglish,...modelConfigEnglish,...refinementEnglish,...artFrameEnglish,...frameStyleEnglish,...importEnglish,...simpleDesignEnglish,...filmStyleEnglish,...galleryEnglish,...accountEnglish,...agentEnglish};
+const english={...baseEnglish,...chatgptEnglish,...modelConfigEnglish,...refinementEnglish,...artFrameEnglish,...frameStyleEnglish,...importEnglish,...simpleDesignEnglish,...filmStyleEnglish,...galleryEnglish,...accountEnglish,...agentEnglish,...cameraEnglish};
 export type Language='zh-CN'|'en';
 let initial:Language='en';
 try{const saved=localStorage.getItem('liubai.language');if(saved==='en'||saved==='zh-CN')initial=saved;}catch{/* Storage may be unavailable during a browser preview. */}

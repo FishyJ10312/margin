@@ -1,0 +1,20 @@
+{
+  "参数": "Camera",
+  "参数水印样式": "Camera caption styles",
+  "单行参数": "One line",
+  "两行": "Two lines",
+  "镜头与日期": "Lens & date",
+  "显示内容": "Caption",
+  "插入参数": "Insert detail",
+  "机身": "Body",
+  "镜头": "Lens",
+  "焦距": "Focal length",
+  "等效焦距": "35mm equiv.",
+  "光圈": "Aperture",
+  "快门": "Shutter",
+  "日期": "Date",
+  "本张：": "This photo: ",
+  "这张照片没有拍摄参数，参数水印不会显示": "This photo has no camera details, so the caption is skipped",
+  "每张照片自动读取自己的拍摄参数；缺少的项目会连同分隔符一起省略": "Each photo fills in its own camera details; missing items are left out with their separators",
+  "请填写参数水印的内容": "Enter what the camera caption should show"
+}

@@ -12,7 +12,7 @@ pub fn definitions() -> Vec<Value> {
         "borderPercent":{"type":"number","minimum":0,"maximum":30},"frameColor":color,
         "decoration":{"type":"object","additionalProperties":false,"properties":{"kind":{"enum":["none","paper","linen","dots","lines","waves","corners"]},"color":color,"opacity":{"type":"number","minimum":0,"maximum":1},"scale":{"type":"number","minimum":0.1,"maximum":10}}},
         "watermark":{"type":"object","additionalProperties":false,"properties":{
-            "kind":{"enum":["none","text","image"]},"text":{"type":"string","maxLength":1024},"imagePath":nullable_path,"fontPath":nullable_path,"fontFamily":{"type":["string","null"],"maxLength":200},
+            "kind":{"enum":["none","text","image","camera"]},"text":{"type":"string","maxLength":1024},"cameraTemplate":{"type":"string","maxLength":200},"imagePath":nullable_path,"fontPath":nullable_path,"fontFamily":{"type":["string","null"],"maxLength":200},
             "sizePercent":{"type":"number","minimum":0.1,"maximum":30},"opacity":{"type":"number","minimum":0,"maximum":1},"color":color,
             "offsetX":{"type":"number","minimum":-50000,"maximum":50000},"offsetY":{"type":"number","minimum":-50000,"maximum":50000},"marginPercent":{"type":"number","minimum":0,"maximum":30},
             "region":{"enum":["photo","border"]},"position":{"enum":["top-left","top-center","top-right","center-left","center","center-right","bottom-left","bottom-center","bottom-right"]}

@@ -192,3 +192,16 @@
 @media (prefers-reduced-motion: reduce) {
   .gallery-shell .thumbnail { transition: none; }
 }
+
+/* Camera-info watermark */
+.camera-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-block-end: 16px; }
+.camera-presets button { min-block-size: 30px; padding: 0 11px; border: 1px solid var(--border-strong); border-radius: 15px; background: transparent; color: var(--ink); font-size: 12px; }
+.camera-presets button:hover:not(.chosen) { background: var(--surface-soft); }
+.camera-presets button.chosen { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+.watermark-text-row:has(> textarea) { align-items: flex-start; }
+.camera-template { flex: 1; min-inline-size: 0; min-block-size: 58px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--paper); color: var(--ink); font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; }
+.camera-tokens { display: flex; flex-wrap: wrap; gap: 4px; margin-block: 8px 2px; }
+.camera-tokens button { min-block-size: 26px; padding: 0 8px; border: 1px dashed var(--border-strong); border-radius: 5px; background: transparent; color: var(--muted); font-size: 11px; }
+.camera-tokens button:hover { border-style: solid; color: var(--ink); }
+.gallery-shell .camera-summary { color: var(--ink); overflow-wrap: anywhere; }
+.gallery-shell .camera-missing { color: var(--seal); }

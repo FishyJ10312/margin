@@ -34,7 +34,7 @@
 </script>
 <details class="watermark-detail" class:collapsed open={!collapsed} on:toggle={(event)=>oncollapse(!event.currentTarget.open)} on:wheel|stopPropagation aria-label={$t("实际水印效果")} aria-busy={busy}>
  <summary class="detail-heading" aria-label={$t(collapsed?"展开水印预览":"收起水印预览")} title={$t(collapsed?"展开水印预览":"收起水印预览")}>
-  <strong><ZoomIn size={12}/>{#if !collapsed}<span class="detail-font" title={settings.watermark.fontFamily??''}>{settings.watermark.kind==='text'?(settings.watermark.fontFamily||$t("内置思源黑体 · 支持中文")):'PNG'}</span>{/if}</strong>{#if !collapsed}<ChevronRight size={12}/>{/if}
+  <strong><ZoomIn size={12}/>{#if !collapsed}<span class="detail-font" title={settings.watermark.fontFamily??''}>{settings.watermark.kind!=='image'?(settings.watermark.fontFamily||$t("内置思源黑体 · 支持中文")):'PNG'}</span>{/if}</strong>{#if !collapsed}<ChevronRight size={12}/>{/if}
  </summary>
  {#if !collapsed}
  <div class="detail-body">

@@ -148,3 +148,10 @@ dialog { color-scheme: dark; }
 /* Removal undo/redo floats over the stage instead of squeezing into the rail. */
 .gallery-shell .catalog-undo { position: fixed; z-index: 6; inset-inline-start: 120px; inset-block-end: 52px; max-inline-size: min(560px, calc(100vw - 460px)); padding: 8px 12px; border: 1px solid #383838; border-radius: 8px; background: #232323; color: var(--ink); font-size: 12px; box-shadow: 0 10px 30px rgb(0 0 0 / .45); }
 .gallery-shell .catalog-undo .text-button { color: #f0a23b; }
+
+/* Camera-info watermark: selected style reads like the selected ratio. */
+.camera-presets button { border-color: #2e2e2e; background: #141414; color: #cfcfcf; border-radius: 5px; }
+.camera-presets button:hover:not(.chosen) { background: #222; }
+.camera-presets button.chosen { background: #2a2215; border-color: #f0a23b; color: #f0a23b; }
+.camera-tokens button { border-color: #3a3a3a; }
+.gallery-shell .camera-missing { color: #f3c27a; }

@@ -58,7 +58,15 @@ pub struct WatermarkSettings {
     pub region: String,
     pub position: String,
     pub margin_percent: f64,
+    /// Template for the "camera" kind, filled per photo from EXIF.
+    pub camera_template: String,
+    /// Set while rendering a camera caption: border captions line up with the
+    /// photo's edges rather than the canvas edge. Never stored.
+    #[serde(skip)]
+    pub align_to_photo: bool,
 }
+
+pub const DEFAULT_CAMERA_TEMPLATE: &str = "{camera} · {focal} · {aperture} · {shutter} · {iso}";
 
 impl Default for WatermarkSettings {
     fn default() -> Self {
@@ -76,6 +84,8 @@ impl Default for WatermarkSettings {
             region: "photo".into(),
             position: "bottom-right".into(),
             margin_percent: 2.0,
+            camera_template: DEFAULT_CAMERA_TEMPLATE.into(),
+            align_to_photo: false,
         }
     }
 }

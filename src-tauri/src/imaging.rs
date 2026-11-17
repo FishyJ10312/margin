@@ -31,6 +31,7 @@ use crate::{
 
 struct LoadedImage {
     pixels: RgbaImage,
+    camera: crate::camera_info::CameraInfo,
     warning: Option<String>,
     proxy: OnceLock<RgbaImage>,
 }
@@ -92,6 +93,12 @@ fn rgba_buffer(width: u32, height: u32) -> Result<RgbaImage, String> {
     RgbaImage::from_raw(width, height, data).ok_or("无法建立图片缓冲区".into())
 }
 
+/// Camera details for one photo, read from its file without decoding pixels.
+pub fn camera_info(path: &Path) -> Result<crate::camera_info::CameraInfo, String> {
+    let input = source_io::read(path)?;
+    Ok(crate::camera_info::read(&input.bytes))
+}
+
 pub fn clear_image_cache() {
     if let Some(cache) = CACHE.get() {
         if let Ok(mut cached) = cache.lock() {
@@ -136,7 +143,7 @@ pub fn validate_settings(settings: &RenderSettings) -> Result<(), String> {
         crate::artwork::validate(art)?;
     }
     let w = &settings.watermark;
-    if !matches!(w.kind.as_str(), "none" | "text" | "image") {
+    if !matches!(w.kind.as_str(), "none" | "text" | "image" | "camera") {
         return Err("水印类型无效".into());
     }
     if w.kind == "none" {
@@ -175,11 +182,12 @@ pub fn validate_settings(settings: &RenderSettings) -> Result<(), String> {
     ) {
         return Err("水印位置无效".into());
     }
-    if w.kind == "text" {
-        if w.text.trim().is_empty() {
-            return Err("请输入水印文字".into());
+    if w.kind == "text" || w.kind == "camera" {
+        let text = if w.kind == "camera" { &w.camera_template } else { &w.text };
+        if text.trim().is_empty() {
+            return Err(if w.kind == "camera" { "请填写参数水印的内容" } else { "请输入水印文字" }.into());
         }
-        if w.text.chars().count() > 200 {
+        if text.chars().count() > 200 {
             return Err("水印文字最多 200 个字符".into());
         }
         parse_color(&w.color)?;
@@ -200,6 +208,24 @@ pub fn validate_settings(settings: &RenderSettings) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// A camera-info watermark is ordinary text once this photo's EXIF fills its
+/// template. Photos without usable EXIF render without the watermark.
+const NO_CAMERA_INFO: &str = "这张照片没有拍摄参数，参数水印不会显示";
+fn for_photo<'a>(settings: &'a RenderSettings, source: &LoadedImage) -> std::borrow::Cow<'a, RenderSettings> {
+    if settings.watermark.kind != "camera" {
+        return std::borrow::Cow::Borrowed(settings);
+    }
+    let mut resolved = settings.clone();
+    let text: String = crate::camera_info::resolve(&settings.watermark.camera_template, &source.camera)
+        .chars()
+        .take(200)
+        .collect();
+    resolved.watermark.kind = if text.trim().is_empty() { "none" } else { "text" }.into();
+    resolved.watermark.align_to_photo = true;
+    resolved.watermark.text = text;
+    std::borrow::Cow::Owned(resolved)
 }
 
 pub fn parse_color(value: &str) -> Result<[u8; 3], String> {
@@ -420,6 +446,8 @@ fn loaded(path: &Path) -> Result<Arc<LoadedImage>, String> {
     } else {
         decode_standard_bytes(path, &input.bytes)?
     };
+    let mut decoded = decoded;
+    decoded.camera = crate::camera_info::read(&input.bytes);
     let image = Arc::new(decoded);
     let mut cache = CACHE
         .get()
@@ -492,6 +520,7 @@ fn decode_standard_bytes(path: &Path, bytes: &[u8]) -> Result<LoadedImage, Strin
         convert_profile(&mut pixels, &profile)?;
     }
     Ok(LoadedImage {
+        camera: Default::default(),
         pixels,
         proxy: OnceLock::new(),
         warning: None,
@@ -586,6 +615,7 @@ fn decode_heif(bytes: &[u8]) -> Result<LoadedImage, String> {
         return Err("这张高位深 HEIC 缺少颜色信息，无法保证 SDR 颜色，请先转为 JPG".into());
     }
     Ok(LoadedImage {
+        camera: Default::default(),
         pixels,
         proxy: OnceLock::new(),
         warning: Some("HEIC 已读取静态主图，导出为 SDR sRGB".into()),
@@ -726,6 +756,8 @@ pub fn preview(
     validate_settings(settings)?;
     let _guard = RENDER_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let source = loaded(path)?;
+    let requested = settings;
+    let settings = &*for_photo(requested, &source);
     let full = layout::calculate(source.pixels.width(), source.pixels.height(), settings)?;
     let small = layout::scaled(full, max_edge.clamp(128, 2048));
     check_render_budget(
@@ -761,7 +793,10 @@ pub fn preview(
         source_thumbnail: None,
         width: full.width,
         height: full.height,
-        warning: source.warning.clone(),
+        warning: source.warning.clone().or_else(|| {
+            (requested.watermark.kind == "camera" && settings.watermark.kind == "none")
+                .then(|| NO_CAMERA_INFO.to_string())
+        }),
         photo_bounds: PixelRect {
             x: full.x,
             y: full.y,
@@ -779,6 +814,7 @@ pub fn export_image(
     validate_settings(settings)?;
     let _guard = RENDER_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let source = loaded(source)?;
+    let settings = &*for_photo(settings, &source);
     let full = layout::calculate(source.pixels.width(), source.pixels.height(), settings)?;
     check_render_budget(
         source.pixels.dimensions(),
@@ -1139,7 +1175,16 @@ fn watermark_position(
         }
         .into());
     }
-    let x = if w.position.ends_with("left") {
+    let photo_aligned = w.region == "border" && w.align_to_photo && width <= layout.photo_width;
+    let x = if photo_aligned {
+        if w.position.ends_with("left") {
+            layout.x
+        } else if w.position.ends_with("right") {
+            layout.x + layout.photo_width - width
+        } else {
+            layout.x + (layout.photo_width - width) / 2
+        }
+    } else if w.position.ends_with("left") {
         rx + margin
     } else if w.position.ends_with("right") {
         rx + rw - margin - width
@@ -1435,6 +1480,99 @@ mod tests {
         let decoded = decode_standard(&source).unwrap();
         assert_eq!(decoded.pixels.dimensions(), (30, 40));
     }
+
+    fn jpeg_with_camera_exif(path: &Path, exif_fields: bool) {
+        use exif::{experimental::Writer, Field, In, Rational, Tag, Value};
+        let image = RgbaImage::from_pixel(600, 400, Rgba([70, 120, 170, 255]));
+        let data = jpeg_data_url(&image, 92).unwrap();
+        let jpeg = STANDARD.decode(data.split(',').nth(1).unwrap()).unwrap();
+        if !exif_fields {
+            fs::write(path, jpeg).unwrap();
+            return;
+        }
+        let field = |tag, value| Field { tag, ifd_num: In::PRIMARY, value };
+        let fields = [
+            field(Tag::Make, Value::Ascii(vec![b"SONY".to_vec()])),
+            field(Tag::Model, Value::Ascii(vec![b"ILCE-7M4".to_vec()])),
+            field(Tag::FNumber, Value::Rational(vec![Rational { num: 18, denom: 10 }])),
+            field(Tag::ExposureTime, Value::Rational(vec![Rational { num: 1, denom: 250 }])),
+            field(Tag::FocalLength, Value::Rational(vec![Rational { num: 35, denom: 1 }])),
+            field(Tag::PhotographicSensitivity, Value::Short(vec![100])),
+            field(Tag::DateTimeOriginal, Value::Ascii(vec![b"2026:11:17 09:30:00".to_vec()])),
+        ];
+        let mut writer = Writer::new();
+        for f in &fields {
+            writer.push_field(f);
+        }
+        let mut tiff = Cursor::new(Vec::new());
+        writer.write(&mut tiff, true).unwrap();
+        let mut app1 = b"Exif\0\0".to_vec();
+        app1.extend_from_slice(tiff.get_ref());
+        let mut out = vec![0xff, 0xd8, 0xff, 0xe1];
+        out.extend_from_slice(&((app1.len() + 2) as u16).to_be_bytes());
+        out.extend_from_slice(&app1);
+        out.extend_from_slice(&jpeg[2..]);
+        fs::write(path, out).unwrap();
+    }
+
+    #[test]
+    fn camera_watermark_fills_from_each_photos_exif() {
+        let dir = tempfile::tempdir().unwrap();
+        let with = dir.path().join("sony.jpg");
+        let plain = dir.path().join("no-exif.jpg");
+        jpeg_with_camera_exif(&with, true);
+        jpeg_with_camera_exif(&plain, false);
+        let info = camera_info(&with).unwrap();
+        assert_eq!(info.camera.as_deref(), Some("SONY ILCE-7M4"));
+        assert_eq!(info.date.as_deref(), Some("2026.11.17"));
+
+        let mut s = RenderSettings::default();
+        s.border_percent = 12.0;
+        s.frame_color = "#FFFFFF".into();
+        s.watermark.kind = "camera".into();
+        s.watermark.region = "border".into();
+        s.watermark.position = "bottom-left".into();
+        s.watermark.color = "#000000".into();
+        s.watermark.opacity = 1.0;
+        s.watermark.size_percent = 4.0;
+        s.watermark.margin_percent = 1.0;
+        validate_settings(&s).unwrap();
+
+        let source = loaded(&with).unwrap();
+        assert_eq!(
+            for_photo(&s, &source).watermark.text,
+            "SONY ILCE-7M4 · 35mm · f/1.8 · 1/250s · ISO 100"
+        );
+        assert_eq!(preview(&with, &s, 512).unwrap().warning, None);
+        assert!(watermark_detail(&with, &s).is_ok());
+        assert_eq!(preview(&plain, &s, 512).unwrap().warning.as_deref(), Some(NO_CAMERA_INFO));
+        assert_eq!(watermark_detail(&plain, &s).unwrap_err(), NO_CAMERA_INFO);
+
+        // Only the photo with EXIF gets dark glyphs in its white bottom border.
+        let dark_in_border = |path: &Path| {
+            let out = dir.path().join(format!("out-{}.png", path.file_stem().unwrap().to_string_lossy()));
+            let mut png = s.clone();
+            png.export.format = "png".into();
+            export_image(path, &png, &out).unwrap();
+            let img = image::open(&out).unwrap().to_rgb8();
+            let border_top = img.height() - (400.0 * 0.12) as u32 + 2;
+            (border_top..img.height())
+                .flat_map(|y| (0..img.width()).map(move |x| (x, y)))
+                .filter(|&(x, y)| img.get_pixel(x, y)[0] < 128)
+                .count()
+        };
+        assert!(dark_in_border(&with) > 50);
+        // The caption lines up with the photo edge, not the canvas edge.
+        let full = layout::calculate(600, 400, &s).unwrap();
+        let resolved = for_photo(&s, &source);
+        let mark = watermark_bitmap(&resolved.watermark, full).unwrap().unwrap();
+        let (x, _) = watermark_position(full, &resolved.watermark, mark.width(), mark.height()).unwrap();
+        assert_eq!(x, full.x);
+        assert_eq!(dark_in_border(&plain), 0);
+
+        s.watermark.camera_template = "  ".into();
+        assert!(validate_settings(&s).is_err());
+    }
 }
 
 fn bundled_font_db() -> &'static fontdb::Database {
@@ -1655,6 +1793,11 @@ pub fn watermark_detail(
 ) -> Result<crate::model::WatermarkDetail, String> {
     let _guard = RENDER_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let source = loaded(path)?;
+    let resolved = for_photo(settings, &source);
+    if settings.watermark.kind == "camera" && resolved.watermark.kind == "none" {
+        return Err(NO_CAMERA_INFO.into());
+    }
+    let settings = &*resolved;
     let (full, mark, (mx, my), limits) =
         mark_geometry(source.pixels.width(), source.pixels.height(), settings)?;
     let pad = (mark.height() / 2).clamp(24, 180);

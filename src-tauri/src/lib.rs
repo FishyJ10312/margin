@@ -8,6 +8,7 @@ mod app_models;
 pub mod art_ai;
 pub mod art_direction;
 pub mod artwork;
+pub mod camera_info;
 pub mod chatgpt_auth;
 #[cfg(unix)]
 mod chatgpt_file_vault;
@@ -160,6 +161,14 @@ async fn get_sampler_image(
 ) -> Result<model::SampleImage, String> {
     let backend = state.inner().clone();
     blocking(move || backend.sampler_image(&photo_id, x, y)).await
+}
+#[tauri::command]
+async fn get_camera_info(
+    photo_id: String,
+    state: BackendState<'_>,
+) -> Result<camera_info::CameraInfo, String> {
+    let backend = state.inner().clone();
+    blocking(move || backend.camera_info(&photo_id)).await
 }
 #[tauri::command]
 async fn get_watermark_detail(
@@ -584,6 +593,7 @@ pub fn run() {
             sample_color,
             get_sampler_image,
             get_watermark_detail,
+            get_camera_info,
             save_settings,
             save_preset,
             delete_preset,

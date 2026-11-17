@@ -3,7 +3,7 @@ export interface Ratio {
   height: number;
 }
 
-export type WatermarkKind = 'none' | 'text' | 'image';
+export type WatermarkKind = 'none' | 'text' | 'image' | 'camera';
 export type WatermarkRegion = 'photo' | 'border';
 export type WatermarkPosition =
   | 'top-left' | 'top-center' | 'top-right'
@@ -24,7 +24,18 @@ export interface WatermarkSettings {
   region: WatermarkRegion;
   position: WatermarkPosition;
   marginPercent: number;
+  /** Template for the 'camera' kind; each photo fills it from its own EXIF. */
+  cameraTemplate: string;
 }
+
+/** Shooting details read from a photo's EXIF, already formatted. */
+export interface CameraInfo {
+  camera: string | null; make: string | null; model: string | null; lens: string | null;
+  focal: string | null; focal35: string | null; aperture: string | null; shutter: string | null;
+  iso: string | null; date: string | null;
+}
+
+export const defaultCameraTemplate = '{camera} · {focal} · {aperture} · {shutter} · {iso}';
 
 export interface ExportSettings {
   format: 'jpg' | 'png';
@@ -132,6 +143,7 @@ export const defaultSettings: RenderSettings = {
     region: 'photo',
     position: 'bottom-right',
     marginPercent: 2,
+    cameraTemplate: defaultCameraTemplate,
   },
   export: { format: 'jpg', jpegQuality: 95, longEdge: null },
 };

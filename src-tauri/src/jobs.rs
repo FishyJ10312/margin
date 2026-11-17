@@ -467,6 +467,17 @@ impl Backend {
         imaging::watermark_detail(Path::new(&photo.path), &settings)
     }
 
+    pub fn camera_info(&self, photo_id: &str) -> Result<crate::camera_info::CameraInfo, String> {
+        let path = self
+            .lock()?
+            .photos
+            .iter()
+            .find(|p| p.id == photo_id)
+            .map(|p| p.path.clone())
+            .ok_or("请先选择照片")?;
+        imaging::camera_info(Path::new(&path))
+    }
+
     pub fn design_geometry(
         &self,
         photo_id: &str,

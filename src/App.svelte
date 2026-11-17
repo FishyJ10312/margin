@@ -8,8 +8,7 @@
   import {
     ImagePlus, Plus, Download, FolderOpen, ArrowLeftRight, X, Check,
     LoaderCircle, AlertCircle, CheckCircle2, Bookmark, Trash2, RotateCcw, RotateCw, Plug,
-    Image as ImageIcon, Type, ChevronDown, FileImage, List, Pipette, WandSparkles, SlidersHorizontal, Languages,
-  } from '@lucide/svelte';
+    Image as ImageIcon, Type, ChevronDown, FileImage, List, Pipette, WandSparkles, SlidersHorizontal, Languages, Aperture } from '@lucide/svelte';
   import ModelPanel from './lib/ModelPanel.svelte';
   import ModelsConfig from './lib/ModelsConfig.svelte';
   import PatternSwatch from './lib/PatternSwatch.svelte';
@@ -29,8 +28,7 @@
     defaultSettings,
     type AppSnapshot, type BatchSnapshot, type ImportResult, type Photo,
     type Preset, type PreviewResult, type RenderSettings, type WatermarkKind,
-    type WatermarkPosition, type WatermarkRegion, type FontOption, type FrameSuggestion, type FrameDecoration, type ArtScene, type FrameTemplate, type BuiltinFrame,
-  } from './lib/types';
+    type WatermarkPosition, type WatermarkRegion, type FontOption, type FrameSuggestion, type FrameDecoration, type ArtScene, type FrameTemplate, type BuiltinFrame, defaultCameraTemplate, type CameraInfo } from './lib/types';
 
   const desktop = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
   const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
@@ -309,8 +307,9 @@
     if (value.ratio && (!(value.ratio.width > 0) || !(value.ratio.height > 0))) return $t("自定义比例的宽和高必须大于 0");
     if (value.watermark.kind !== 'none' && (!Number.isFinite(value.watermark.offsetX) || !Number.isFinite(value.watermark.offsetY))) return $t("请输入有效的水印偏移");
     if (value.watermark.kind === 'text' && !value.watermark.text.trim()) return $t("请输入水印文字");
+    if (value.watermark.kind === 'camera' && !value.watermark.cameraTemplate?.trim()) return $t("请填写参数水印的内容");
     if (value.watermark.kind === 'image' && !value.watermark.imagePath) return $t("请选择一张 PNG 水印");
-    if (value.watermark.kind === 'text' && !/^#[0-9a-f]{6}$/i.test(value.watermark.color)) return $t("请选择有效的水印颜色");
+    if ((value.watermark.kind === 'text' || value.watermark.kind === 'camera') && !/^#[0-9a-f]{6}$/i.test(value.watermark.color)) return $t("请选择有效的水印颜色");
     if (value.export.longEdge != null && (!Number.isFinite(value.export.longEdge) || value.export.longEdge < 64)) return $t("输出长边至少为 64 像素");
     return '';
   }
@@ -541,8 +540,47 @@
   }
 
   function changeWatermark(kind: WatermarkKind) {
-    if (settings.watermark.kind !== kind && kind !== 'none') settings.watermark.sizePercent = kind === 'image' ? 15 : 3;
+    if (settings.watermark.kind !== kind && kind !== 'none') settings.watermark.sizePercent = kind === 'image' ? 15 : kind === 'camera' ? 2.2 : 3;
+    if (kind === 'camera' && settings.watermark.kind !== 'camera') {
+      if (!settings.watermark.cameraTemplate?.trim()) settings.watermark.cameraTemplate = defaultCameraTemplate;
+      // Camera details read best as a caption in the bottom border.
+      if (settings.borderPercent > 0) { settings.watermark.region = 'border'; settings.watermark.position = 'bottom-left'; settings.watermark.offsetX = 0; settings.watermark.offsetY = 0; }
+    }
     settings.watermark.kind = kind;
+  }
+
+  const cameraPresets = [
+    { name: '单行参数', template: defaultCameraTemplate },
+    { name: '两行', template: '{camera}\n{focal} {aperture} {shutter} {iso}' },
+    { name: '镜头与日期', template: '{camera} · {lens}\n{date}' },
+    { name: 'Shot on', template: 'Shot on {camera}' },
+  ];
+  const cameraTokens = [
+    ['机身', 'camera'], ['镜头', 'lens'], ['焦距', 'focal'], ['等效焦距', 'focal35'],
+    ['光圈', 'aperture'], ['快门', 'shutter'], ['ISO', 'iso'], ['日期', 'date'],
+  ] as const;
+  let cameraTemplateInput: HTMLTextAreaElement;
+  let cameraInfos: Record<string, CameraInfo | 'error'> = {};
+  $: if (desktop && settings.watermark.kind === 'camera' && selectedPhoto && !(selectedPhoto.id in cameraInfos)) void loadCameraInfo(selectedPhoto.id);
+  $: currentCamera = selectedPhoto ? cameraInfos[selectedPhoto.id] : undefined;
+  $: cameraSummary = currentCamera && currentCamera !== 'error'
+    ? [currentCamera.camera, currentCamera.lens, currentCamera.focal, currentCamera.aperture, currentCamera.shutter, currentCamera.iso, currentCamera.date].filter(Boolean).join(' · ')
+    : '';
+  async function loadCameraInfo(photoId: string) {
+    cameraInfos = { ...cameraInfos, [photoId]: 'error' };
+    try { cameraInfos = { ...cameraInfos, [photoId]: await invoke<CameraInfo>('get_camera_info', { photoId }) }; }
+    catch { cameraInfos = { ...cameraInfos, [photoId]: 'error' }; }
+  }
+  function insertCameraToken(token: string) {
+    const value = settings.watermark.cameraTemplate ?? '';
+    const start = cameraTemplateInput?.selectionStart ?? value.length;
+    const end = cameraTemplateInput?.selectionEnd ?? value.length;
+    const before = value.slice(0, start), after = value.slice(end);
+    const glue = before && !/[\s·|]$/.test(before) ? ' · ' : '';
+    const inserted = `${glue}{${token}}`;
+    settings.watermark.cameraTemplate = (before + inserted + after).slice(0, 200);
+    const caret = Math.min(200, start + inserted.length);
+    requestAnimationFrame(() => { cameraTemplateInput?.focus(); cameraTemplateInput?.setSelectionRange(caret, caret); });
   }
 
   function changeRegion(region: WatermarkRegion) {
@@ -949,6 +987,7 @@
         <div class="segmented" role="group" aria-label={$t("水印类型")}>
           <button class:active={settings.watermark.kind === 'none'} aria-pressed={settings.watermark.kind === 'none'} on:click={() => changeWatermark('none')}>{$t("关闭")}</button>
           <button class:active={settings.watermark.kind === 'text'} aria-pressed={settings.watermark.kind === 'text'} on:click={() => changeWatermark('text')}><Type size={13} />{$t("文字")}</button>
+          <button class:active={settings.watermark.kind === 'camera'} aria-pressed={settings.watermark.kind === 'camera'} on:click={() => changeWatermark('camera')}><Aperture size={13} />{$t("参数")}</button>
           <button class:active={settings.watermark.kind === 'image'} aria-pressed={settings.watermark.kind === 'image'} on:click={() => changeWatermark('image')}><ImageIcon size={13} />PNG</button>
         </div>
         {#if settings.watermark.kind === 'none'}<p class="watermark-off">{$t("给作品加上你的签名或 Logo")}</p>
@@ -956,16 +995,24 @@
           {#if settings.watermark.kind === 'text'}
             <label class="field-label" for="watermark-text">{$t("署名文字")}</label>
             <div class="watermark-text-row"><input id="watermark-text" class="full-width" bind:value={settings.watermark.text} maxlength="160" placeholder={$t("输入你的署名")} /><input class="color-picker" type="color" aria-label={$t('文字水印颜色')} bind:value={settings.watermark.color}/></div>
+          {:else if settings.watermark.kind === 'camera'}
+            <div class="camera-presets" role="group" aria-label={$t('参数水印样式')}>{#each cameraPresets as preset}<button type="button" class:chosen={settings.watermark.cameraTemplate === preset.template} aria-pressed={settings.watermark.cameraTemplate === preset.template} on:click={() => settings.watermark.cameraTemplate = preset.template}>{$t(preset.name)}</button>{/each}</div>
+            <label class="field-label" for="camera-template">{$t('显示内容')}</label>
+            <div class="watermark-text-row"><textarea id="camera-template" class="camera-template" rows="2" maxlength="200" spellcheck="false" bind:this={cameraTemplateInput} bind:value={settings.watermark.cameraTemplate}></textarea><input class="color-picker" type="color" aria-label={$t('文字水印颜色')} bind:value={settings.watermark.color}/></div>
+            <div class="camera-tokens" role="group" aria-label={$t('插入参数')}>{#each cameraTokens as [label, token]}<button type="button" title={`{${token}}`} on:click={() => insertCameraToken(token)}>{$t(label)}</button>{/each}</div>
+            {#if currentCamera === 'error' || (currentCamera && !cameraSummary)}<p class="field-help camera-missing" role="status">{$t('这张照片没有拍摄参数，参数水印不会显示')}</p>
+            {:else if cameraSummary}<p class="field-help camera-summary" title={cameraSummary}>{$t('本张：')}{cameraSummary}</p>{/if}
+            <p class="field-help">{$t('每张照片自动读取自己的拍摄参数；缺少的项目会连同分隔符一起省略')}</p>
           {:else}
             <button class="watermark-file" disabled={!desktop} on:click={chooseWatermarkImage}><ImagePlus size={16} /><span>{settings.watermark.imagePath ? basename(settings.watermark.imagePath) : $t("选择 PNG 水印")}</span><ChevronDown size={13} /></button>
             <p class="field-help">{$t("支持透明背景，保留 Logo 原始比例")}</p>
           {/if}
           <div class="watermark-size-group">
-            <div class="field-title"><label class="field-label" for="watermark-size">{settings.watermark.kind === 'text' ? $t('文字大小') : $t('Logo 大小')}</label><div class="number-with-unit"><input aria-label={$t('水印大小百分比')} type="number" min={settings.watermark.kind === 'text' ? 0.5 : 2} max={settings.watermark.kind === 'text' ? 15 : 60} step="0.5" bind:value={settings.watermark.sizePercent}/><span>%</span></div></div>
-            <input id="watermark-size" type="range" min={settings.watermark.kind === 'text' ? 0.5 : 2} max={settings.watermark.kind === 'text' ? 15 : 60} step="0.5" bind:value={settings.watermark.sizePercent}/>
+            <div class="field-title"><label class="field-label" for="watermark-size">{settings.watermark.kind !== 'image' ? $t('文字大小') : $t('Logo 大小')}</label><div class="number-with-unit"><input aria-label={$t('水印大小百分比')} type="number" min={settings.watermark.kind !== 'image' ? 0.5 : 2} max={settings.watermark.kind !== 'image' ? 15 : 60} step="0.5" bind:value={settings.watermark.sizePercent}/><span>%</span></div></div>
+            <input id="watermark-size" type="range" min={settings.watermark.kind !== 'image' ? 0.5 : 2} max={settings.watermark.kind !== 'image' ? 15 : 60} step="0.5" bind:value={settings.watermark.sizePercent}/>
           </div>
           <div class="font-settings">
-            {#if settings.watermark.kind === 'text'}
+            {#if settings.watermark.kind === 'text' || settings.watermark.kind === 'camera'}
               <FontPicker {fonts} selected={settings.watermark.fontFamily} onchange={(font)=>{settings.watermark.fontPath=font?.path||null;settings.watermark.fontFamily=font?.family??null;}}/>
               {#if fontsLoading}<p class="field-help">{$t("正在读取本机字体…")}</p>{/if}
               {#if fontsError}<p class="field-error">{$t(fontsError)}</p><button class="text-button" on:click={loadFonts}>{$t("重新读取字体")}</button>{/if}
