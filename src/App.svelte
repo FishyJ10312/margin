@@ -794,13 +794,12 @@
 
 <div class:drop-active={dragActive} class="app-shell gallery-shell">
   <header class="app-header">
-    <div class="header-leading"><div class="brand"><h1>{brand.name}</h1></div>
+    <div class="header-leading"><div class="brand"><h1>{brand.name}</h1><span class="brand-seal" aria-hidden="true">留白</span></div></div>
+    <div class="header-actions">
       <button class="button quiet compact import-button" on:click={choosePhotos} disabled={!desktop || importing || choosingPhotos || agentBusy || loading || !initialized}>
         {#if importing}<LoaderCircle size={15} class="spin" />{:else}<ImagePlus size={16} />{/if}
         {importing ? $t("正在导入") : $t("导入照片")}
       </button>
-    </div>
-    <div class="header-actions">
       <button type="button" class:agent-connected={agentConnected} class="icon-button agent-connect-trigger" aria-label={$t('Agent 连接')} title={$t('Agent 连接')} aria-expanded={agentOpen} disabled={!desktop} on:click={()=>agentOpen=true}><Plug size={16}/></button>
       <button type="button" class="icon-button model-config-trigger" aria-label={$t('模型配置')} title={$t('模型配置')} disabled={!desktop} on:click={()=>configureModels()}><SlidersHorizontal size={16}/></button>
       <div class="language-picker">
@@ -811,8 +810,6 @@
         </select>
         <ChevronDown class="language-chevron" size={12} aria-hidden="true" />
       </div>
-      {#if isRunning}<button class="button secondary compact" disabled={cancelling} on:click={cancelBatch}><X size={15}/>{cancelling?$t('正在停止'):$t('取消导出')}</button>
-      {:else}<button class="button primary compact export-button" on:click={openExportDialog} disabled={!desktop || !initialized || !selectedIds.length || !!localError || !!previewError || starting || importing || undoing || agentBusy}><Download size={16}/>{$t('导出选中 {0} 张',{0:selectedIds.length})}</button>{/if}
     </div>
   </header>
 
@@ -872,8 +869,8 @@
 
     <aside class="settings-panel" aria-label={$t("边框和水印设置")}>
       <div class="inspector-tabs" role="tablist" aria-label={$t('边框与水印')}>
-        <button type="button" id="inspector-frame" role="tab" aria-controls="frame-panel" aria-selected={inspectorTab==='frame'} tabindex={inspectorTab==='frame'?0:-1} on:click={()=>selectInspector('frame')} on:keydown={inspectorKey}>{$t('边框')}</button>
-        <button type="button" id="inspector-watermark" role="tab" aria-controls="watermark-panel" aria-selected={inspectorTab==='watermark'} tabindex={inspectorTab==='watermark'?0:-1} on:click={()=>selectInspector('watermark')} on:keydown={inspectorKey}>{$t('水印')}</button>
+        <button type="button" id="inspector-frame" role="tab" aria-controls="frame-panel" aria-selected={inspectorTab==='frame'} tabindex={inspectorTab==='frame'?0:-1} on:click={()=>selectInspector('frame')} on:keydown={inspectorKey}><span class="step-number" aria-hidden="true">01</span>{$t('边框')}</button>
+        <button type="button" id="inspector-watermark" role="tab" aria-controls="watermark-panel" aria-selected={inspectorTab==='watermark'} tabindex={inspectorTab==='watermark'?0:-1} on:click={()=>selectInspector('watermark')} on:keydown={inspectorKey}><span class="step-number" aria-hidden="true">02</span>{$t('水印')}</button>
       </div>
       <div id="frame-panel" class="setting-section inspector-panel" role="tabpanel" tabindex="0" aria-labelledby="inspector-frame" hidden={inspectorTab!=='frame'}>
         <div class="field-title ratio-title"><span class="field-label">{$t('最终比例')}</span><button class="icon-button" disabled={!settings.ratio} on:click={swapRatio} title={$t('交换宽高')} aria-label={$t('交换宽高')}><ArrowLeftRight size={15}/></button></div>
@@ -992,13 +989,21 @@
         {/if}
       </div>
 
-      <div class="inspector-bottom"><button class="button secondary compact art-trigger" disabled={!desktop||!selectedPhoto||importing||isRunning} on:click={()=>{modelMode='image';modelTarget='frame';modelOpen=true;}}><WandSparkles size={15}/>{$t('艺术边框')}</button></div>
+      <div class="inspector-bottom">
+        {#if isRunning}<button class="button secondary export-primary" disabled={cancelling} on:click={cancelBatch}><X size={16}/>{cancelling?$t('正在停止'):$t('取消导出')}</button>
+        {:else}<button class="button primary export-primary export-button" on:click={openExportDialog} disabled={!desktop || !initialized || !selectedIds.length || !!localError || !!previewError || starting || importing || undoing || agentBusy}><Download size={16}/>{$t('导出选中 {0} 张',{0:selectedIds.length})}</button>{/if}
+        <div class="inspector-bottom-row">
+          <button type="button" class="export-options" on:click={openExportDialog} disabled={!desktop||!initialized||!photos.length||isRunning||starting||importing||undoing} aria-label={$t('导出选项')}>{settings.export.format.toUpperCase()} · {settings.export.format==='jpg'?settings.export.jpegQuality:$t('无损 PNG')} · {settings.export.longEdge?`${settings.export.longEdge} px`:$t('保留原始像素')}<ChevronDown size={12}/></button>
+          <button class="text-button art-trigger" disabled={!desktop||!selectedPhoto||importing||isRunning} on:click={()=>{modelMode='image';modelTarget='frame';modelOpen=true;}}><WandSparkles size={14}/>{$t('艺术边框')}</button>
+        </div>
+      </div>
     </aside>
   </div>
 
   <footer class="library-footer">
     {#if isRunning && totalCount > 0}<div class="batch-track" role="progressbar" aria-label={$t("批量导出进度")} aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(progress)}><div style:width={`${progress}%`}></div></div>{/if}
     <section class="filmstrip-section" inert={agentBusy} aria-label={$t('已导入的照片')}>
+      <div class="library-summary"><strong>{photos.length} {$t('张照片',{count:photos.length})}{#if photos.length}<span class="selection-count" role="status">{$t('已选 {0} 张',{0:selectedIds.length})}</span>{/if}</strong><span id="photo-selection-hint" title={$t('先单击起点，再按住 Shift 点击终点；⌘ / Ctrl+A 全选，Esc 取消选择')}>{$t(photos.length>1?'Shift 连选 · ⌘ / Ctrl+A 全选 · Esc 取消':'全部照片共用当前设置')}</span></div>
       <div class="filmstrip" role="group" aria-label={$t('照片选择')} aria-describedby="photo-selection-hint" aria-keyshortcuts="Meta+A Control+A Escape Meta+Z Control+Z Meta+Shift+Z Control+Shift+Z">
         {#each photos as photo (photo.id)}
           {@const job = batch?.items.find((item) => item.photoId === photo.id)}
@@ -1009,13 +1014,11 @@
         {/each}
         <button class="add-tile" on:click={choosePhotos} disabled={!desktop||importing||loading||!initialized} aria-label={$t('添加更多照片')}><Plus size={18}/></button>
       </div>
-      <div class="library-summary"><strong>{photos.length} {$t('张照片',{count:photos.length})}{#if photos.length}<span class="selection-count" role="status"> · {$t('已选 {0} 张',{0:selectedIds.length})}</span>{/if}</strong><span id="photo-selection-hint" title={$t('先单击起点，再按住 Shift 点击终点；⌘ / Ctrl+A 全选，Esc 取消选择')}>{$t(photos.length>1?'Shift 连选 · ⌘ / Ctrl+A 全选 · Esc 取消':'全部照片共用当前设置')}</span></div>
       <div class="library-actions">
       {#if batch && totalCount > 0}
         <button class="batch-summary text-button" on:click={() => jobDialog?.showModal()} title={$t("查看处理记录")}><List size={14} />{#if isRunning}<span>{completedCount + failedCount} / {totalCount}</span>{:else}<span>{completedCount} {$t("张已导出")}</span>{/if}{#if failedCount}<span class="failure-count">{failedCount} {$t("张失败")}</span>{/if}</button>
         {#if failedCount && !isRunning}<button class="button secondary compact" disabled={starting} title={$t("沿用本批次开始时的设置")} on:click={() => continueBatch('retry_failed')}>{$t("重试失败项")}</button>{/if}
       {/if}
-        <button type="button" class="export-options" on:click={openExportDialog} disabled={!desktop||!initialized||!photos.length||isRunning||starting||importing||undoing} aria-label={$t('导出选项')}>{settings.export.format.toUpperCase()} · {settings.export.format==='jpg'?settings.export.jpegQuality:$t('无损 PNG')} · {settings.export.longEdge?`${settings.export.longEdge} px`:$t('保留原始像素')}<ChevronDown size={12}/></button>
         {#if photos.length}<button type="button" class="icon-button clear-photos" aria-label={$t('清空列表')} title={$t('清空列表')} disabled={isRunning||starting||importing||undoing} on:click={()=>photoActions.requestRemoval(photos.map(photo=>photo.id))}><Trash2 size={16}/></button>{/if}
       </div>
     </section>

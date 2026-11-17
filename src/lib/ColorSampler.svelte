@@ -94,7 +94,7 @@
 </div>
 <div class="sampling-help" role="status">{error||$t("移动查看双放大镜，点击精确取色 · 方向键微调 · Esc 退出")}</div>
 <style>
-  .following-loupe{position:absolute;top:0;left:0;pointer-events:none;opacity:0;background:#fff;border:2px solid #fff;border-radius:68px 68px 9px 9px;box-shadow:0 3px 18px #10201055;padding:4px;will-change:transform;z-index:4;}
+  .following-loupe{position:absolute;top:0;left:0;pointer-events:none;opacity:0;background:#fff;border:2px solid #fff;border-radius:68px 68px 9px 9px;box-shadow:0 3px 18px #15141255;padding:4px;will-change:transform;z-index:4;}
   .following-loupe.visible{opacity:1;}
   .following-loupe .pixel-window{border-radius:50%;}
   .following-loupe strong{display:block;text-align:center;font:11px ui-monospace,monospace;padding:5px 0 3px;}

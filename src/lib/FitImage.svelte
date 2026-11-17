@@ -19,7 +19,7 @@
  </div>
 </div>
 <style>
-.fit-image{width:100%;height:100%;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;background:repeating-conic-gradient(#dfe5d8 0% 25%,#f4f7ee 0% 50%) 50%/16px 16px;border-radius:6px;outline-offset:-2px;touch-action:none;}
+.fit-image{width:100%;height:100%;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;background:repeating-conic-gradient(#e4e0d9 0% 25%,#f6f3ef 0% 50%) 50%/16px 16px;border-radius:6px;outline-offset:-2px;touch-action:none;}
 .image-plane{display:flex;align-items:center;justify-content:center;min-width:0;min-height:0;}
 img{display:block;max-width:none;max-height:none;object-fit:contain;user-select:none;-webkit-user-select:none;pointer-events:none;flex-shrink:0;}
 .zoomed{cursor:grab;}.zoomed:active{cursor:grabbing;}

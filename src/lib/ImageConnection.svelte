@@ -65,5 +65,5 @@
  {/if}
 </section>
 <style>
-.image-connection{margin-block:18px 10px;padding-block-start:14px;border-top:1px solid #dce4d3;}h3{font-size:13px;font-weight:550;margin-block-end:12px;}.image-key{display:flex;align-items:center;gap:6px;}.image-key input{min-width:0;flex:1;}.image-options{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-block-start:14px;}.image-options>div{min-width:0;}.image-options select{width:100%;}.image-billing{font-size:11px;line-height:1.8;background:#edf2e7;padding:10px;border-radius:6px;margin-block:10px;}
+.image-connection{margin-block:18px 10px;padding-block-start:14px;border-top:1px solid #e2ddd5;}h3{font-size:13px;font-weight:550;margin-block-end:12px;}.image-key{display:flex;align-items:center;gap:6px;}.image-key input{min-width:0;flex:1;}.image-options{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-block-start:14px;}.image-options>div{min-width:0;}.image-options select{width:100%;}.image-billing{font-size:11px;line-height:1.8;background:#f1eee8;padding:10px;border-radius:6px;margin-block:10px;}
 </style>

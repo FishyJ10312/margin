@@ -45,7 +45,7 @@
  {/if}
 </details>
 <style>
-.watermark-detail{position:absolute;inset-block-start:8px;inset-inline-end:8px;z-index:2;inline-size:160px;max-inline-size:calc(100% - 16px);margin:0;border:1px solid var(--border);border-radius:6px;padding:6px;background:var(--surface);box-shadow:0 2px 8px #17231b10;}
+.watermark-detail{position:absolute;inset-block-start:8px;inset-inline-end:8px;z-index:2;inline-size:160px;max-inline-size:calc(100% - 16px);margin:0;border:1px solid var(--border);border-radius:6px;padding:6px;background:var(--surface);box-shadow:0 2px 8px #1a181610;}
 .detail-heading{display:flex;align-items:center;justify-content:space-between;gap:4px;min-block-size:22px;color:var(--ink);cursor:pointer;list-style:none;outline-offset:3px;}
 .detail-heading::-webkit-details-marker{display:none;}.detail-heading strong{display:flex;align-items:center;gap:4px;min-inline-size:0;font-weight:500;}.detail-heading :global(svg){flex-shrink:0;}
 .detail-body{display:flex;flex-direction:column;gap:4px;min-inline-size:0;margin-block-start:2px;}

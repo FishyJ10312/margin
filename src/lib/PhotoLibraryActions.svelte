@@ -152,14 +152,14 @@
 </dialog>
 
 <style>
-  .photo-context-menu{position:fixed;inset:auto;margin:0;padding:5px;min-inline-size:214px;max-inline-size:calc(100vw - 16px);border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--ink);box-shadow:0 8px 24px #15201a24;z-index:1000;}
+  .photo-context-menu{position:fixed;inset:auto;margin:0;padding:5px;min-inline-size:214px;max-inline-size:calc(100vw - 16px);border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--ink);box-shadow:0 8px 24px #18161424;z-index:1000;}
   .photo-context-menu button{display:flex;align-items:center;gap:9px;inline-size:100%;min-block-size:34px;padding:7px 10px;border:0;border-radius:4px;background:transparent;color:inherit;font-size:12px;text-align:start;white-space:nowrap;}
   .photo-context-menu button:hover,.photo-context-menu button:focus{background:var(--surface-soft);}
   .photo-context-menu button:focus-visible{outline:2px solid var(--green);outline-offset:-2px;}
   kbd{margin-inline-start:auto;padding-inline-start:18px;color:var(--muted);font:12px ui-sans-serif,system-ui,sans-serif;}
-  .photo-removal-dialog{inline-size:min(430px,calc(100vw - 40px));max-block-size:calc(100vh - 40px);padding:24px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--ink);box-shadow:0 16px 60px #15201a30;overflow:auto;}
+  .photo-removal-dialog{inline-size:min(430px,calc(100vw - 40px));max-block-size:calc(100vh - 40px);padding:24px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--ink);box-shadow:0 16px 60px #18161430;overflow:auto;}
   .photo-removal-dialog:modal{overscroll-behavior:contain;}
-  .photo-removal-dialog::backdrop{background:#18241d55;overflow:hidden;overscroll-behavior:contain;}
+  .photo-removal-dialog::backdrop{background:#1b191655;overflow:hidden;overscroll-behavior:contain;}
   .removal-heading{display:flex;align-items:center;gap:12px;}
   .removal-icon{display:grid;place-items:center;flex:0 0 38px;block-size:38px;border:1px solid var(--border);border-radius:8px;background:var(--surface-soft);color:var(--muted);}
   h2{font-size:17px;line-height:1.45;font-weight:550;}

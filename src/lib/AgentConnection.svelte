@@ -58,8 +58,8 @@
 </dialog>
 
 <style>
-  .agent-connection{inline-size:min(650px,94vw);max-block-size:88vh;padding:0;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--ink);box-shadow:0 18px 70px #18241c30;overscroll-behavior:contain;}
-  .agent-connection::backdrop{background:#15201a50;overflow:hidden;overscroll-behavior:contain;}
+  .agent-connection{inline-size:min(650px,94vw);max-block-size:88vh;padding:0;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--ink);box-shadow:0 18px 70px #1b191630;overscroll-behavior:contain;}
+  .agent-connection::backdrop{background:#18161450;overflow:hidden;overscroll-behavior:contain;}
   header{display:flex;align-items:start;justify-content:space-between;gap:20px;padding:21px 24px 18px;border-block-end:1px solid var(--border);}
   h2{display:flex;align-items:center;gap:9px;font-size:19px;font-weight:550;}header p{margin:7px 0 0;color:var(--muted);font-size:12px;}
   .agent-body{padding:20px 24px;max-block-size:calc(88vh - 154px);overflow:auto;overscroll-behavior:contain;}.agent-intro{font-size:13px;line-height:1.8;margin:0 0 18px;}

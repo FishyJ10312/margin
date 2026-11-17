@@ -2,6 +2,7 @@ import { mount } from 'svelte';
 import ColorSampler from '../../src/lib/ColorSampler.svelte';
 import '../../src/app.css';
 import '../../src/gallery.css';
+import '../../src/paper.css';
 const state={requests:[] as {cmd:string;x:number;y:number;time:number}[],updates:[] as number[]};
 const fixture=(color:string)=>`data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="21" height="21"><rect width="21" height="21" fill="${color}"/></svg>`)}`;
 Object.assign(window,{__TAURI_INTERNALS__:{invoke:async(cmd:string,args:any)=>{
