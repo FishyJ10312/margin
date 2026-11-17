@@ -24,5 +24,10 @@ with tempfile.TemporaryDirectory(prefix='.margin-source-', dir=target.parent) as
         data = path.read_bytes()
         verify_source(relative, data)
         archive.writestr(f'{product_name}-{version}/{relative.as_posix()}', data)
-  os.replace(temporary, target)
+  # The completed ZIP and destination share a filesystem. Linking publishes
+  # the sealed archive atomically and refuses a destination created meanwhile.
+  try:
+    os.link(temporary, target)
+  except FileExistsError:
+    raise SystemExit('Refusing to replace an existing source package') from None
 print(f'{target.name}: {target.stat().st_size:,} bytes')
