@@ -105,6 +105,7 @@ fn credentials(url: &reqwest::Url, key: &str) -> Result<(), String> {
 }
 fn client(seconds: u64) -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
+        .retry(reqwest::retry::never())
         .connect_timeout(Duration::from_secs(8))
         .timeout(Duration::from_secs(seconds))
         .redirect(reqwest::redirect::Policy::none())

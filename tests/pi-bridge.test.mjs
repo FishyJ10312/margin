@@ -45,6 +45,7 @@ async function fixture(options={}){
     },
     async logout(provider){await credentials.delete(provider);},
     streamSimple(model,context,options){
+     if(config.requireNoRetries&&options.maxRetries!==0)throw new Error('unsafe-retry-policy');
      if(context.tools.length!==0||context.messages[0].content[1].mimeType!=='image/jpeg')throw new Error('unsafe-context');
      // Deliberately do not await the write; the adapter must keep the child alive.
      void credentials.modify('openai',()=>({type:'oauth',access:'FAKE_ACCESS_TOKEN'}));
@@ -103,4 +104,8 @@ test('a rejected credential write overrides a result with a redacted auth failur
  const f=await fixture({writeFailure:true});try{
   const r=await f.run('infer');assert.ok(r.events.some(e=>e.type==='error'&&e.code==='auth'));assert.doesNotMatch(r.output+r.stderr,/FAKE_REFRESH/);
  }finally{await f.cleanup();}
+});
+
+test('explicit inference disables SDK client retries',async()=>{
+ const f=await fixture({requireNoRetries:true});try{const r=await f.run('infer');assert.ok(r.events.some(e=>e.type==='result'),'The adapter must explicitly disable SDK retries');}finally{await f.cleanup();}
 });

@@ -11,12 +11,12 @@ async function prepare(query=''){
  await page.waitForSelector(dock);
  if(await page.evaluate(()=>!document.querySelector('.watermark-detail').open))await page.click('.watermark-detail > summary');
  await page.waitForSelector(dock+' img');await page.selectOption('.language-select','en');
- await settled();await page.click('.watermark-section details.advanced-watermark > summary');
- await page.waitForSelector('.font-picker [role=option]');
+ await settled();await page.click('#inspector-watermark');
+ await page.waitForSelector('.font-picker [data-index="0"]');
 }
 async function geometry(){return page.evaluate(()=>{
  const box=selector=>{const r=document.querySelector(selector).getBoundingClientRect();return {x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width,height:r.height};};
- return {dock:box('.watermark-detail'),photo:box('.photo-viewport'),panel:box('.settings-panel'),strip:box('.filmstrip-section'),list:box('.font-picker'),footer:box('.app-footer'),width:innerWidth,height:innerHeight,documentWidth:document.documentElement.scrollWidth};
+ return {dock:box('.watermark-detail'),photo:box('.photo-viewport'),panel:box('.settings-panel'),strip:box('.filmstrip-section'),list:box('.font-picker'),footer:box('.library-footer'),width:innerWidth,height:innerHeight,documentWidth:document.documentElement.scrollWidth};
 });}
 function visibleTogether(g){
  assert.ok(Math.abs(g.dock.right-(g.photo.right-8))<=1&&Math.abs(g.dock.y-(g.photo.y+8))<=1,'Close-up stays in the top-right photo corner');
@@ -24,16 +24,16 @@ function visibleTogether(g){
  assert.ok(Math.abs(g.photo.right-g.panel.x)<=1,'The main photo uses all available width instead of reserving a side column');
  assert.ok(g.photo.height>=300,'Main photo keeps its full height, including at the smallest desktop size');
  assert.ok(g.list.y>=0&&g.list.bottom<=g.footer.y,'Keyboard font choices are visible');
- assert.ok(g.strip.bottom<=g.footer.y+1&&g.footer.bottom<=g.height+1,'Thumbnails and export controls fit the window');
+ assert.ok(g.strip.y>=g.footer.y-1&&g.strip.bottom<=g.footer.bottom+1&&g.footer.bottom<=g.height+1,'Thumbnails and export controls fit the window');
  assert.equal(g.documentWidth,g.width,'No horizontal page overflow');
 }
 await viewport(1280,900);await prepare();
 assert.equal(await page.evaluate(()=>document.querySelectorAll('.settings-panel .watermark-detail').length),0);
-assert.deepEqual(await page.evaluate(()=>window.__qa.windowControl.inner),{width:2560,height:1800});
+assert.deepEqual(await page.evaluate(()=>window.__qa.windowControl.inner),{width:2360,height:1600});
 await page.focus('.font-picker');
-const initial=await page.evaluate(()=>({src:document.querySelector('.watermark-detail img').src,panel:document.querySelector('.settings-panel').scrollTop}));
+const initial=await page.evaluate(()=>({src:document.querySelector('.watermark-detail img').src,panel:document.querySelector('#watermark-panel').scrollTop}));
 await page.press('.font-picker','ArrowDown');await settled();
-const after=await page.evaluate(()=>({src:document.querySelector('.watermark-detail img').src,chosen:document.querySelector('.font-picker [aria-selected=true]').textContent,font:document.querySelector('.detail-font').textContent,focused:document.activeElement.classList.contains('font-picker'),panel:document.querySelector('.settings-panel').scrollTop}));
+const after=await page.evaluate(()=>({src:document.querySelector('.watermark-detail img').src,chosen:document.querySelector('.font-picker [aria-selected=true]').textContent,font:document.querySelector('.detail-font').textContent,focused:document.activeElement.classList.contains('font-picker'),panel:document.querySelector('#watermark-panel').scrollTop}));
 assert.ok(after.chosen.includes('Serif'));assert.equal(after.font,'站酷小薇体');assert.notEqual(after.src,initial.src,'The actual context image updates when changing font');assert.equal(after.focused,true);assert.equal(after.panel,initial.panel);
 visibleTogether(await geometry());
 await page.press('.font-picker','ArrowDown');await settled();
@@ -45,13 +45,14 @@ await page.evaluate(()=>{window.__qa.detailControl.delay=180;window.__qa.observe
 await page.press('.font-picker','ArrowUp');await page.waitForFunction(()=>window.__qa.detailControl.active===1);
 await page.press('.font-picker','ArrowDown');await page.press('.font-picker','ArrowDown');await settled();
 const rapid=await page.evaluate(()=>{const rendered=window.__qa.detailControl.rendered;return {active:window.__qa.detailControl.maxActive,font:rendered.at(-1).settings.watermark.fontFamily,src:document.querySelector('.watermark-detail img').src,expected:rendered.at(-1).dataUrl,stale:rendered.at(-2).dataUrl,observed:window.__qa.observed,focus:document.activeElement.classList.contains('font-picker'),resizes:window.__qa.requests.filter(r=>r.cmd==='plugin:window|set_size').length};});
-assert.equal(rapid.active,1);assert.equal(rapid.font,'Times New Roman');assert.equal(rapid.src,rapid.expected);assert.ok(!rapid.observed.includes(rapid.stale),'An obsolete in-flight font must never flash in the close-up');assert.equal(rapid.focus,true);assert.equal(rapid.resizes,1,'Font changes must not keep resizing the window');
+assert.equal(rapid.active,1);assert.equal(rapid.font,'Times New Roman');assert.equal(rapid.src,rapid.expected);assert.ok(!rapid.observed.includes(rapid.stale),'An obsolete in-flight font must never flash in the close-up');assert.equal(rapid.focus,true);assert.equal(rapid.resizes,0,'The compact gallery must not resize the window when changing fonts');
 await page.evaluate(()=>{window.__qa.observer.disconnect();window.__qa.detailControl.delay=0;});
 console.log('PASS: rapid keyboard changes stay serial and only show the latest requested font.');
 
 const beforeSize=await page.evaluate(()=>document.querySelector('.watermark-detail img').src);
 await page.fill('input[aria-label="Watermark size percentage"]','4');await settled();
 assert.notEqual(await page.evaluate(()=>document.querySelector('.watermark-detail img').src),beforeSize);
+await page.click('.position-details > summary');
 await page.fill('input[aria-label="Watermark horizontal offset"]','-40');await page.fill('input[aria-label="Watermark vertical offset"]','20');await settled();
 assert.ok(await page.evaluate(()=>document.querySelector('.detail-image').title.includes('X 410 · Y 740')));
 await page.selectOption('.watermark-detail select[aria-label="Watermark close-up zoom"]','2');
@@ -85,11 +86,11 @@ assert.equal(await page.evaluate(()=>document.querySelector('.watermark-detail i
 assert.equal(await page.evaluate(()=>JSON.stringify(window.__qa.requests.filter(r=>r.cmd==='get_preview').at(-1).args.settings)),settingsBeforeCollapse,'Folding the preview must not disable or change the exported watermark');
 await page.reload();await page.waitForSelector(dock);await page.waitForFunction(()=>document.querySelector('.watermark-detail').getAttribute('aria-busy')==='false');
 assert.equal(await page.evaluate(()=>document.querySelector('.watermark-detail').open),false,'Collapsed preference survives reopening');
-await page.click('.watermark-section details.advanced-watermark > summary');await page.waitForSelector('.font-picker [role=option]');
+await page.click('#inspector-watermark');await page.waitForSelector('.font-picker [data-index="0"]');
 assert.equal(await page.evaluate(()=>window.__qa.requests.filter(r=>r.cmd.startsWith('plugin:window|')).length),0,'Collapsed preview must not enlarge the window when loading photos or fonts');
 await page.press('.watermark-detail > summary','Enter');await settled();
 assert.equal(await page.evaluate(()=>document.activeElement===document.querySelector('.watermark-detail > summary')),true);
-await page.waitForFunction(()=>window.__qa.windowControl.inner.width===2560);
+assert.equal(await page.evaluate(()=>window.__qa.windowControl.inner.width),2360,'Opening a miniature overlay must not enlarge the window');
 console.log('PASS: mouse/keyboard folding preserves photo layout and watermark, remembers preference and avoids enlargement while collapsed.');
 
 const withDock=(await geometry()).photo.width;
@@ -115,9 +116,9 @@ for(const flag of ['fullscreen','maximized','rejectResize']){
 console.log('PASS: automatic growth respects display scale, work area and full-screen/maximized windows; declined resizing is harmless.');
 
 await viewport(1280,900);await prepare('?long-font-list');await page.focus('.font-picker');await page.press('.font-picker','End');await settled();
-const boundary=await page.evaluate(()=>{const list=document.querySelector('.font-picker');list.scrollTop=list.scrollHeight;const r=list.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,panel:document.querySelector('.settings-panel').scrollTop};});
+const boundary=await page.evaluate(()=>{const list=document.querySelector('.font-picker');list.scrollTop=list.scrollHeight;const r=list.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,panel:document.querySelector('#watermark-panel').scrollTop};});
 await page.mouse.move(boundary.x,boundary.y,{label:'Scrolling within font options'});await page.mouse.wheel(0,380);
-assert.equal(await page.evaluate(()=>document.querySelector('.settings-panel').scrollTop),boundary.panel);
+assert.equal(await page.evaluate(()=>document.querySelector('#watermark-panel').scrollTop),boundary.panel);
 visibleTogether(await geometry());
 await page.selectOption('.language-select','zh-CN');
 assert.ok(await page.evaluate(()=>document.querySelector('.detail-heading').getAttribute('aria-label').includes('收起水印预览')));

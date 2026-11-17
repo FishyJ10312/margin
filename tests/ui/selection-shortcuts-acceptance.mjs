@@ -1,0 +1,73 @@
+// Selection keyboard shortcuts + export/removal integration with synthetic data only.
+import assert from 'node:assert/strict';
+const screenshotDirectory=(await import('node:path')).join((await import('node:os')).tmpdir(),'margin-ui-acceptance');
+await (await import('node:fs/promises')).mkdir(screenshotDirectory,{recursive:true});
+const task=await taskSpace('Margin selection shortcuts');console.log({spaceId:task.spaceId});
+const page=task.page('p1');await page.goto('http://127.0.0.1:1420/tests/ui/app.html');
+await page.waitForFunction(()=>window.__qa?.dropReady&&document.querySelector('.zoom-photo')?.complete);
+console.log(await page.snapshot());await page.selectOption('.language-select','en');
+await page.evaluate(()=>window.__qa.drop(['/synthetic/two.png','/synthetic/three.png','/synthetic/four.png','/synthetic/five.png','/synthetic/six.png']));
+await page.waitForFunction(()=>document.querySelectorAll('.thumbnail').length===6&&!window.__qa.importControl.activeImports);
+const thumb=n=>`.filmstrip .thumbnail >> nth=${n}`;
+const selected=()=>page.evaluate(()=>[...document.querySelectorAll('.thumbnail')].flatMap((el,i)=>el.getAttribute('aria-pressed')==='true'?[i]:[]));
+const calls=cmd=>page.evaluate(cmd=>window.__qa.requests.filter(r=>r.cmd===cmd),cmd);
+async function click(n,modifier){if(modifier)await page.keyboard.down(modifier);try{await page.click(thumb(n));}finally{if(modifier)await page.keyboard.up(modifier);}}
+await click(1);await click(4,'Shift');assert.deepEqual(await selected(),[1,2,3,4]);
+await click(4);await click(1,'Shift');assert.deepEqual(await selected(),[1,2,3,4]);
+await click(2,'Shift');assert.deepEqual(await selected(),[2,3,4]);
+const active=await page.evaluate(()=>document.querySelector('.thumbnail.active').dataset.photoId);
+await page.keyboard.press('Meta+a');assert.deepEqual(await selected(),[0,1,2,3,4,5]);
+assert.equal(await page.evaluate(()=>document.querySelector('.thumbnail.active').dataset.photoId),active);
+assert.match(await page.evaluate(()=>document.querySelector('.export-button').textContent),/Export 6 selected/);
+await page.keyboard.press('Backspace');await page.waitForSelector('.photo-removal-dialog[open]');
+assert.match(await page.evaluate(()=>document.querySelector('#photo-removal-title').textContent),/Remove 6 photos/);
+await page.keyboard.press('Escape');assert.deepEqual(await selected(),[0,1,2,3,4,5]);
+await page.keyboard.press('Escape');assert.deepEqual(await selected(),[]);
+assert.equal(await page.evaluate(()=>document.querySelector('.thumbnail.active').dataset.photoId),active);
+assert.equal(await page.evaluate(()=>document.querySelector('.export-button').disabled&&document.querySelector('.remove-photo').disabled),true);
+assert.match(await page.evaluate(()=>document.querySelector('.export-button').textContent),/Export 0 selected/);
+await page.keyboard.press('Backspace');assert.equal((await calls('remove_photos')).length,0);
+console.log('PASS: ordinary click anchors inclusive Shift ranges, Command+A keeps the preview, Escape clears and zero-selection actions are disabled.');
+
+await page.keyboard.press('Control+a');assert.equal((await selected()).length,6);await page.keyboard.press('Escape');
+await click(1);await click(3,'Shift');await page.click('#inspector-watermark');await page.fill('#watermark-text','Keep this text');
+await page.keyboard.press('Meta+a');assert.deepEqual(await selected(),[1,2,3]);
+assert.equal(await page.evaluate(()=>document.querySelector('#watermark-text').selectionEnd-document.querySelector('#watermark-text').selectionStart),14);
+await page.keyboard.press('Escape');assert.deepEqual(await selected(),[1,2,3]);
+await page.focus('#font-search');await page.keyboard.press('Meta+a');await page.keyboard.press('Escape');assert.deepEqual(await selected(),[1,2,3]);
+await page.click('#inspector-frame');await page.click('.export-button');await page.waitForSelector('.export-review[open]');
+await page.keyboard.press('Meta+a');assert.deepEqual(await selected(),[1,2,3]);await page.keyboard.press('Escape');assert.deepEqual(await selected(),[1,2,3]);
+await page.click(thumb(2),{button:'right'});await page.waitForFunction(()=>document.querySelector('.photo-context-menu').dataset.open==='true');
+await page.keyboard.press('Escape');assert.deepEqual(await selected(),[1,2,3]);await page.keyboard.press('Escape');assert.deepEqual(await selected(),[]);
+console.log('PASS: Ctrl+A fallback, text/font editing, dialogs and context-menu Escape preserve the correct shortcut scope.');
+
+await page.click('.export-options');await page.waitForSelector('.export-review[open]');
+assert.equal(await page.evaluate(()=>document.querySelector('.start-export').disabled),true);
+assert.equal(await page.evaluate(()=>document.querySelector('input[value="selected"][name="export-scope"]').checked),true);
+await page.click('input[value="all"][name="export-scope"]');assert.match(await page.evaluate(()=>document.querySelector('.start-export').textContent),/Export 6 photos/);await page.keyboard.press('Escape');
+assert.equal((await calls('start_batch')).length,0);assert.deepEqual(await selected(),[]);
+console.log('PASS: clear selection never silently becomes export-all; explicit all-photo range is retained.');
+
+await click(1);await click(4,'Shift');
+const expected=await page.evaluate(()=>[...document.querySelectorAll('.thumbnail.selected')].map(el=>el.dataset.photoId));
+await page.click('.export-button');await page.waitForSelector('.export-review[open]');await page.click('.start-export');
+await page.waitForFunction(()=>!document.querySelector('.export-review').open);
+assert.deepEqual((await calls('start_batch')).at(-1).args.photoIds,expected);
+await page.focus(thumb(4));await page.keyboard.press('Meta+a');assert.equal((await selected()).length,6);
+await page.keyboard.press('Escape');assert.deepEqual(await selected(),[]);
+assert.deepEqual((await calls('start_batch')).at(-1).args.photoIds,expected);
+await page.evaluate(()=>window.__qa.emitBatch({id:'shortcut-finished',revision:1,status:'completed',outputDirectory:'/synthetic/exports',items:[]}));
+await click(1);await click(4,'Shift');await page.keyboard.press('Backspace');await page.waitForSelector('.photo-removal-dialog[open]');
+assert.match(await page.evaluate(()=>document.querySelector('#photo-removal-title').textContent),/Remove 4 photos/);
+await page.click('.confirm-photo-removal');await page.waitForFunction(()=>document.querySelectorAll('.thumbnail').length===2);
+assert.deepEqual((await calls('remove_photos')).at(-1).args.ids,expected);
+console.log('PASS: export and removal use the identical selected range; subsequent all/clear cannot mutate a running batch.');
+
+await page.selectOption('.language-select','zh-CN');await page.focus(thumb(0));await page.keyboard.press('Meta+a');
+await page.cdp('Emulation.setDeviceMetricsOverride',{width:900,height:650,deviceScaleFactor:1,mobile:false});
+assert.equal(await page.evaluate(()=>getComputedStyle(document.querySelector('.selection-count')).display!=='none'),true);
+await page.keyboard.press('Escape');assert.match(await page.evaluate(()=>document.querySelector('.selection-count').textContent),/已选 0 张/);
+assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+await page.screenshot({path:screenshotDirectory+'/selection-cleared-900x650.png'});
+console.log('PASS: Chinese zero count stays visible in the compact layout, without page overflow.');
+console.log('All selection shortcut fixture checks passed.');await task.finish({keep:[]});

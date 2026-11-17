@@ -39,7 +39,7 @@ impl Default for AiConfig {
     fn default() -> Self {
         Self {
             frame_design: crate::art_direction::FrameDesign::default(),
-            provider: "codex".into(),
+            provider: "chatgpt".into(),
             base_url: String::new(),
             model: String::new(),
             codex_path: None,
@@ -109,6 +109,7 @@ pub struct ArtAi {
     photo: Mutex<Option<AiPhoto>>,
     busy: AtomicBool,
     cancel: Mutex<Option<watch::Sender<bool>>>,
+    cancelled_token: Mutex<Option<String>>,
 }
 impl ArtAi {
     pub fn new(directory: PathBuf) -> Self {
@@ -119,6 +120,7 @@ impl ArtAi {
             photo: Mutex::new(None),
             busy: AtomicBool::new(false),
             cancel: Mutex::new(None),
+            cancelled_token: Mutex::new(None),
         }
     }
     pub fn prepare(&self, data_url: String, width: u32, height: u32) -> Result<AiPhoto, String> {
@@ -166,10 +168,16 @@ impl ArtAi {
         Ok(p)
     }
     pub fn state(&self) -> Result<AiState, String> {
-        let config: AiConfig = fs::read(self.directory.join("model-settings.json"))
+        let mut config: AiConfig = fs::read(self.directory.join("model-settings.json"))
             .ok()
             .and_then(|b| serde_json::from_slice(&b).ok())
             .unwrap_or_default();
+        // Consolidate the old Pi / OpenAI entry without opening Pi, importing its
+        // rotating secrets, or silently sending a request through another account.
+        if config.provider == "pi" && config.pi_provider == "openai" {
+            config.provider = "chatgpt".into();
+            config.chatgpt_account_id = self.chatgpt.state()?.active_id;
+        }
         let path = find_codex(config.codex_path.as_deref());
         let logged = path.as_ref().is_some_and(|p| {
             std::process::Command::new(p)
@@ -200,6 +208,9 @@ impl ArtAi {
         Ok(())
     }
     pub fn cancel(&self) {
+        if let (Ok(photo), Ok(mut token)) = (self.photo.lock(), self.cancelled_token.lock()) {
+            *token = photo.as_ref().map(|p| p.token.clone());
+        }
         if let Ok(guard) = self.cancel.lock() {
             if let Some(tx) = guard.as_ref() {
                 tx.send_replace(true);
@@ -261,6 +272,10 @@ impl ArtAi {
             .ok_or("请重新打开智能配框")?;
         let (tx, mut rx) = watch::channel(false);
         *self.cancel.lock().map_err(|_| "无法启动模型任务")? = Some(tx);
+        if self.cancelled_token.lock().map_err(|_| "无法读取取消状态")?.as_deref() == Some(token) {
+            *self.cancel.lock().map_err(|_| "无法取消模型任务")? = None;
+            return Err("已取消模型请求；请重新准备缩略图后手动重试".into());
+        }
         let work = async {
             let frame_direction = if config.frame_design.notes.trim().is_empty() {
                 "根据照片的内容、构图与色彩，自主设计一幅有明确创意和视觉层次的边框，照片是视觉中心"
@@ -315,7 +330,7 @@ impl ArtAi {
                 .await
             }
         };
-        let result = tokio::select! {r=work=>r,_=rx.changed()=>Err("已取消模型请求；已发出的请求可能仍按服务商规则计费".into()),_=tokio::time::sleep(Duration::from_secs(300))=>Err("生图响应超时，请检查所选入口后重试".into())};
+        let result = tokio::select! {biased;_=rx.changed()=>Err("已取消模型请求；已发出的请求可能仍按服务商规则计费".into()),r=work=>r,_=tokio::time::sleep(Duration::from_secs(300))=>Err("生图响应超时，请检查所选入口后重试".into())};
         if let Ok(mut c) = self.cancel.lock() {
             *c = None;
         }
@@ -353,6 +368,10 @@ impl ArtAi {
         }
         let (tx, mut rx) = watch::channel(false);
         *self.cancel.lock().map_err(|_| "无法启动模型任务")? = Some(tx);
+        if self.cancelled_token.lock().map_err(|_| "无法读取取消状态")?.as_deref() == Some(token) {
+            *self.cancel.lock().map_err(|_| "无法取消模型任务")? = None;
+            return Err("已取消模型请求；请重新准备缩略图后手动重试".into());
+        }
         let work = async {
             if config.provider == "codex" {
                 run_codex(&config, &photo).await
@@ -395,7 +414,7 @@ impl ArtAi {
                 run_api(&config, &api_key, &photo).await
             }
         };
-        let result = tokio::select! {res=work=>res,_=rx.changed()=>Err("已取消模型请求；已发出的请求可能仍按服务商规则计费".into()),_=tokio::time::sleep(Duration::from_secs(180))=>Err("模型响应超时，请稍后重试".into())};
+        let result = tokio::select! {biased;_=rx.changed()=>Err("已取消模型请求；已发出的请求可能仍按服务商规则计费".into()),res=work=>res,_=tokio::time::sleep(Duration::from_secs(180))=>Err("模型响应超时，请稍后重试".into())};
         if let Ok(mut cancel) = self.cancel.lock() {
             *cancel = None;
         }
@@ -654,6 +673,7 @@ async fn run_codex(c: &AiConfig, p: &AiPhoto) -> Result<Vec<FrameSuggestion>, St
 }
 async fn run_api(c: &AiConfig, key: &str, p: &AiPhoto) -> Result<Vec<FrameSuggestion>, String> {
     let client = reqwest::Client::builder()
+        .retry(reqwest::retry::never())
         .connect_timeout(Duration::from_secs(8))
         .timeout(Duration::from_secs(160))
         .redirect(reqwest::redirect::Policy::none())
@@ -1043,4 +1063,14 @@ p.write_text(json.dumps({'suggestions':[{'title':'Refined','rationale':'Changed 
         assert!(result[0].artwork.design.is_none());
         assert_eq!(result[0].artwork.elements[0].points[0], [100., 830.]);
     }
+    #[test]
+    fn cancelling_a_prepared_token_prevents_a_later_queued_dispatch() {
+        use std::sync::{Arc,atomic::{AtomicBool,AtomicUsize,Ordering}};
+        use std::io::{Read,Write};
+        let listener=std::net::TcpListener::bind("127.0.0.1:0").unwrap();listener.set_nonblocking(true).unwrap();let address=listener.local_addr().unwrap();let stop=Arc::new(AtomicBool::new(false));let calls=Arc::new(AtomicUsize::new(0));let done=stop.clone();let seen=calls.clone();
+        let server=std::thread::spawn(move||{while !done.load(Ordering::Acquire){match listener.accept(){Ok((mut stream,_))=>{seen.fetch_add(1,Ordering::AcqRel);let _=stream.set_read_timeout(Some(Duration::from_secs(1)));let mut buffer=[0u8;8192];let _=stream.read(&mut buffer);let _=stream.write_all(b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");},Err(_)=>std::thread::sleep(Duration::from_millis(2))}}});
+        let root=tempfile::tempdir().unwrap();let service=ArtAi::new(root.path().into());let photo=service.prepare("data:image/jpeg;base64,eA==".into(),1,1).unwrap();let config=AiConfig{provider:"api".into(),base_url:format!("http://{address}/v1"),model:"fixture-vision".into(),..Default::default()};
+        service.cancel();let result=tauri::async_runtime::block_on(service.generate(&photo.token,config,String::new()));stop.store(true,Ordering::Release);server.join().unwrap();assert!(result.is_err_and(|e|e.contains("已取消")),"A cancelled prepared token was still allowed to dispatch");assert_eq!(calls.load(Ordering::Acquire),0,"Cancel-before-start must send no model POST");
+    }
+
 }

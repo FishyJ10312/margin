@@ -90,6 +90,10 @@ export interface BatchSnapshot {
   error?: string | null;
 }
 
+export interface CatalogSelection {activeId:string;ids:string[];anchorId:string}
+export interface RemovalEntry {id:string;count:number;selection:CatalogSelection}
+export interface CatalogHistorySnapshot {undo:RemovalEntry[];redo:RemovalEntry[]}
+
 export interface AppSnapshot {
   settings: RenderSettings;
   presets: Preset[];
@@ -97,11 +101,16 @@ export interface AppSnapshot {
   photos: Photo[];
   batch: BatchSnapshot | null;
   warnings?: string[];
+  catalogHistory?:CatalogHistorySnapshot;
+  catalogRevision?:number;
+  photoSelection?:CatalogSelection;
 }
 
 export interface ImportResult {
   photos: Photo[];
   errors: string[];
+  catalogRevision?:number;
+  photoSelection?:CatalogSelection;
 }
 
 export const defaultSettings: RenderSettings = {
@@ -137,14 +146,14 @@ export const defaultImageConfig:ImageConfig={provider:'codex',baseUrl:'https://a
 export interface FrameDesign {style:'auto'|'graphic'|'editorial'|'film'|'linework'|'collage'|'illustration'|'custom';placement:'auto'|'corners'|'sides'|'bottom';palette:'photo'|'mono'|'custom';colors:string[];texture:boolean;notes:string}
 export const defaultFrameDesign:FrameDesign={style:'auto',placement:'auto',palette:'photo',colors:['#315D69','#C27B5E','#D6C3A0'],texture:false,notes:''};
 export interface AiConfig {frameDesign:FrameDesign;image:ImageConfig;provider:'pi'|'chatgpt'|'codex'|'api';piProvider?:string;piPath?:string|null;chatgptAccountId?:string|null;baseUrl:string;model:string;codexPath:string|null;styleDirection:string;designDensity:'auto'|'simple'|'balanced'|'rich';language?:'zh-CN'|'en'}
-export const defaultAiConfig:AiConfig={frameDesign:{...defaultFrameDesign,colors:[...defaultFrameDesign.colors]},image:{...defaultImageConfig},provider:'codex',piProvider:'openai',piPath:null,chatgptAccountId:null,baseUrl:'',model:'',codexPath:null,styleDirection:'',designDensity:'auto'};
+export const defaultAiConfig:AiConfig={frameDesign:{...defaultFrameDesign,colors:[...defaultFrameDesign.colors]},image:{...defaultImageConfig},provider:'chatgpt',piProvider:'openai',piPath:null,chatgptAccountId:null,baseUrl:'',model:'',codexPath:null,styleDirection:'',designDensity:'auto'};
 export const piProviders=[{id:'openai',name:'OpenAI / ChatGPT',billing:'ChatGPT 订阅用量'},{id:'anthropic',name:'Claude Pro / Max',billing:'Claude 订阅用量'},{id:'github-copilot',name:'GitHub Copilot',billing:'Copilot 套餐用量'},{id:'openrouter',name:'OpenRouter',billing:'OpenRouter 账户余额'}];
 export interface PiRuntimeInfo {available:boolean;path:string|null;version:string|null}
 export interface PiModel {id:string;name:string;input:string[];contextWindow:number;reasoning:boolean}
 export interface PiCatalog {provider:string;connected:boolean;authType:'oauth'|'api_key'|null;models:PiModel[]}
 export interface PiPrompt {id:string;kind:'text'|'secret'|'select'|'manual_code';message:string;placeholder:string;options:{id:string;label:string;description?:string}[]}
 export interface PiAuthEvent {sessionId:string;provider:string;phase:string;host:string|null;deviceCode:string|null;prompt:PiPrompt|null}
-export interface ChatGptAccount {id:string;label:string;connected:boolean;planEnabled:boolean}
+export interface ChatGptAccount {id:string;label:string;connected:boolean;planEnabled:boolean;status:'saved'|'connected'|'reconnect'|'unavailable'|'signedOut'}
 export interface ChatGptDiagnostic {status:number;code:string|null;param:string|null;requestId:string|null;bodyShape:string}
 export interface ChatGptState {accounts:ChatGptAccount[];activeId:string|null;diagnostic?:ChatGptDiagnostic|null}
 export interface ChatGptModel {slug:string;displayName:string}

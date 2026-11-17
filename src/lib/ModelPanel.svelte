@@ -32,6 +32,7 @@
  $: if(!loading&&imageApiKey&&imageApiOrigin!==origin(config.image.baseUrl)){imageApiKey='';imageApiOrigin='';}
  let prepared: AiPhoto | null = null;
  let busy = false, loading = true, consent = false,alive=true;
+ let cancelRequested=false,needsPreparation=false;
  let chatgptReady=false,chatgptLabel='';
  let connectionProblem='';
  let piReady=false;
@@ -78,15 +79,25 @@
   consent=false;reference=false;refined=false;suggestions=[];previews={};await initialize(config);await tick();if(alive)document.getElementById('style-direction')?.focus();
  }
  onDestroy(()=>{alive=false;if(busy)void invoke('cancel_art_frames');});
+ async function cancelGeneration(){
+  cancelRequested=true;needsPreparation=true;consent=false;
+  await invoke('cancel_art_frames');
+ }
  async function generate() {
   if (!prepared || !consent || busy || !imageTask&&(config.provider==='chatgpt'&&!chatgptReady||config.provider==='pi'&&!piReady)) return;
-  busy=true; problem='';chatgptDiagnostic=null; suggestions=[];previews={};
+  busy=true;cancelRequested=false; problem='';chatgptDiagnostic=null; suggestions=[];previews={};
   try {
+   if(needsPreparation){
+    const next=await invoke<AiPhoto>(mode==='refine'?'prepare_art_refinement':'prepare_ai_photo',{photoId:photo.id,settings:baseSettings});
+    if(!alive||cancelRequested)return;
+    prepared=next;needsPreparation=false;
+   }
    syncBrief();config={...config,language:$language};
    await invoke('save_ai_config',{config});
-   if(!alive)return;
+   if(!alive||cancelRequested)return;
    if(imageTask){
     const result=await invoke<GeneratedArt>(completeFrame?'generate_complete_frame':'generate_handdrawn',{token:prepared.token,config,reference:completeFrame||reference,apiKey:config.image.provider==='openai'?imageApiKey:''});
+    if(!alive||cancelRequested)return;
     if(completeFrame){
      const g=prepared.geometry;if(!g?.photoBounds)throw $t('画布信息已更新，请重新打开智能配框');const b=g.photoBounds;
      suggestions=[{title:$t(mode==='refine'?'艺术边框精修':'整幅艺术边框'),rationale:result.summary.slice(0,200),frameColor:baseSettings.frameColor,borderPercent:baseSettings.borderPercent,decoration:{...baseSettings.decoration,kind:'none'},artwork:{elements:[],frameImage:{imagePath:result.imagePath,opacity:1,reference:{width:1000,height:1000,x:b.x,y:b.y,photoWidth:b.width,photoHeight:b.height}}}}];
@@ -94,13 +105,13 @@
      suggestions=[{title:$t('手绘艺术边框'),rationale:result.summary.slice(0,200),frameColor:baseSettings.frameColor,borderPercent:baseSettings.borderPercent,decoration:baseSettings.decoration,artwork:{...baseSettings.artwork,elements:baseSettings.artwork?.elements||[],stickers:[{imagePath:result.imagePath,anchor:'bottom-left',scale:0.9,opacity:1,flipX:false}]}}];
     }
     if(mode==='refine')refined=true;
-   }else{suggestions=await invoke<FrameSuggestion[]>('generate_art_frames',{token:prepared.token,config,apiKey:config.provider==='api'?apiKey:''});if(mode==='refine')refined=true;}
-   if(!alive)return;
-   for(let i=0;i<suggestions.length;i++){const s=suggestions[i];const result=await invoke<PreviewResult>('get_preview',{photoId:photo.id,settings:{...baseSettings,...s,watermark:{...baseSettings.watermark,kind:'none'}}});if(!alive)return;previews={...previews,[i]:result.dataUrl};}
-   await tick();if(alive&&(mode==='refine'||completeFrame))(mode==='refine'?refinementComparison:resultContainer)?.scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
-  } catch(error) {if(!alive)return;problem=String(error);if(!imageTask&&config.provider==='chatgpt'){try{chatgptDiagnostic=(await invoke<ChatGptState>('get_chatgpt_state')).diagnostic??null;}catch{/* Keep the request failure. */}}} finally {if(alive)busy=false;}
+   }else{const result=await invoke<FrameSuggestion[]>('generate_art_frames',{token:prepared.token,config,apiKey:config.provider==='api'?apiKey:''});if(!alive||cancelRequested)return;suggestions=result;if(mode==='refine')refined=true;}
+   if(!alive||cancelRequested)return;
+   for(let i=0;i<suggestions.length;i++){const s=suggestions[i];const result=await invoke<PreviewResult>('get_preview',{photoId:photo.id,settings:{...baseSettings,...s,watermark:{...baseSettings.watermark,kind:'none'}}});if(!alive||cancelRequested)return;previews={...previews,[i]:result.dataUrl};}
+   await tick();if(alive&&!cancelRequested&&(mode==='refine'||completeFrame))(mode==='refine'?refinementComparison:resultContainer)?.scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
+  } catch(error) {if(!alive||cancelRequested)return;problem=String(error);if(!imageTask&&config.provider==='chatgpt'){try{chatgptDiagnostic=(await invoke<ChatGptState>('get_chatgpt_state')).diagnostic??null;}catch{/* Keep the request failure. */}}} finally {if(alive){if(cancelRequested){suggestions=[];previews={};}busy=false;}}
  }
- async function close() { if(busy) {await invoke('cancel_art_frames');return;}onclose(); }
+ async function close() { if(busy) {await cancelGeneration();return;}onclose(); }
 </script>
 <dialog bind:this={dialog} class="model-dialog" on:cancel|preventDefault={close} aria-labelledby="art-title">
  <header><div><h2 id="art-title">{$t(mode==='refine'?'精修边框':'AI 设计')}</h2><p>{$t(mode==='refine'?'描述想调整的地方，先看效果再应用':'从照片出发，设计一个属于它的边框')}</p></div><button class="icon-button" aria-label={busy?$t("取消模型请求"):$t('关闭 AI 设计')} on:click={close}><X size={18} /></button></header>
@@ -128,7 +139,7 @@
   {/if}
   {#if refined}<p class="creative-note" role="status">{$t('本轮精修完成，选择应用后可撤销。')}</p>{/if}
   {#if mode==='refine'&&suggestions.length&&prepared?.before}<div class="refine-comparison" bind:this={refinementComparison} aria-label={$t('精修前后对比')}><figure><figcaption>{$t('精修前')}</figcaption><img src={prepared.before} alt={$t('精修前的完整配框')} style:aspect-ratio={previewAspect} /></figure><figure><figcaption>{$t('精修后')}</figcaption>{#if previews[0]}<img src={previews[0]} alt={$t('精修后的完整配框')} style:aspect-ratio={previewAspect} />{:else}<div class="comparison-loading" role="status"><LoaderCircle size={18} class="spin"/>{$t('准备精修效果…')}</div>{/if}</figure></div>{/if}
-  {#if busy}<progress aria-label={$t('模型正在处理')}></progress><div class="model-loading" role="status"><LoaderCircle size={17} class="spin" /><span>{$t(imageTask?'正在绘制艺术边框，通常需要一至三分钟…':'正在分析照片，完成后可预览和选择…')}</span><button class="text-button" on:click={()=>invoke('cancel_art_frames')}>{$t("取消")}</button></div>{/if}
+  {#if busy}<progress aria-label={$t('模型正在处理')}></progress><div class="model-loading" role="status"><LoaderCircle size={17} class="spin" /><span>{$t(imageTask?'正在绘制艺术边框，通常需要一至三分钟…':'正在分析照片，完成后可预览和选择…')}</span><button class="text-button" on:click={cancelGeneration}>{$t("取消")}</button></div>{/if}
   {#if problem}<p class="model-problem" role="alert">{$t(problem)}</p>{#if !prepared && !loading}<button class="text-button" on:click={()=>initialize()}><RotateCcw size={13} />{$t("重新准备")}</button>{/if}{/if}
   {#if !imageTask&&config.provider==='chatgpt'&&connectionProblem}<p class="model-problem" role="alert">{$t(connectionProblem)}</p><button class="text-button" on:click={configure}>{$t('在模型配置中检查连接')}</button>{/if}
   {#if problem&&!imageTask&&config.provider==='chatgpt'}<button class="text-button" on:click={configure}>{$t('在模型配置中检查连接')}</button>{/if}

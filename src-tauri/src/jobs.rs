@@ -1,10 +1,10 @@
 use crate::app_models::{
-    AppSnapshot, BatchSnapshot, ImportResult, JobItem, Photo, Preset, StoredState,
+    AppSnapshot, BatchSnapshot, ImportResult, JobItem, Photo, PhotoRemovalReceipt, PhotoSelection, Preset, RemovedPhotos, RestoredPhotos, StoredState,
 };
-use crate::imaging;
+use crate::{imaging, source_io};
 use crate::model::RenderSettings;
 use crate::storage::Storage;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -12,15 +12,22 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 pub type ProgressSink = Arc<dyn Fn(BatchSnapshot) + Send + Sync>;
 
+#[cfg(test)]
+const REMOVAL_UNDO_LIMIT: usize = crate::app_models::REMOVAL_HISTORY_LIMIT;
+
 pub struct Backend {
     data: Mutex<StoredState>,
     storage: Storage,
     warnings: Mutex<Vec<String>>,
     image_gate: Mutex<()>,
-    cancelled: AtomicBool,
+    cancelled: Arc<AtomicBool>,
     worker_active: AtomicBool,
     preview_generation: AtomicU64,
 }
+
+#[cfg(test)]
+#[path = "removal_undo_tests.rs"]
+mod removal_undo_tests;
 
 impl Backend {
     pub fn exported_image(&self, path: &str) -> Result<String, String> {
@@ -52,7 +59,23 @@ impl Backend {
     pub fn new(directory: PathBuf) -> Result<Arc<Self>, String> {
         let storage = Storage::new(directory)?;
         let (mut data, mut warnings) = storage.load()?;
+        if data.catalog_history.sanitize() {
+            warnings.push("照片历史记录无法读取，已保留当前照片列表并重置撤销和重做记录。".into());
+        }
+        data.photo_selection = Some(Self::current_selection(&data));
         if let Some(batch) = &mut data.batch {
+            for item in &mut batch.items {
+                if let Some(path) = item.temporary_path.as_deref() {
+                    match remove_owned_temporary(
+                        Path::new(&batch.output_directory),
+                        &item.id,
+                        Path::new(path),
+                    ) {
+                        Ok(()) => item.temporary_path = None,
+                        Err(error) => warnings.push(error),
+                    }
+                }
+            }
             if batch.status == "running" {
                 batch.status = "interrupted".into();
                 for item in &mut batch.items {
@@ -91,7 +114,7 @@ impl Backend {
             storage,
             warnings: Mutex::new(warnings),
             image_gate: Mutex::new(()),
-            cancelled: AtomicBool::new(false),
+            cancelled: Arc::new(AtomicBool::new(false)),
             worker_active: AtomicBool::new(false),
             preview_generation: AtomicU64::new(0),
         }))
@@ -132,6 +155,9 @@ impl Backend {
             frame_templates: data.frame_templates.clone(),
             photos: data.photos.clone(),
             batch: data.batch.clone(),
+            catalog_history: data.catalog_history.snapshot(),
+            catalog_revision: data.catalog_revision,
+            photo_selection: Self::current_selection(&data),
             warnings: self
                 .warnings
                 .lock()
@@ -141,6 +167,7 @@ impl Backend {
     }
 
     pub fn import_photos(&self, paths: Vec<String>) -> Result<ImportResult, String> {
+        source_io::clear_failures();
         let mut known: HashSet<String> = self
             .lock()?
             .photos
@@ -151,22 +178,13 @@ impl Backend {
         let mut errors = Vec::new();
         for raw in paths {
             let path = PathBuf::from(&raw);
-            if !path.is_file() {
-                if !path.is_dir() {
-                    errors.push(format!("找不到文件：{}", display_name(&path)));
-                }
-                continue;
-            }
-            if !supported_input(&path) {
-                continue;
-            }
-            let canonical = match fs::canonicalize(&path) {
-                Ok(path) => path,
-                Err(error) => {
-                    errors.push(format!("{}：{error}", display_name(&path)));
-                    continue;
-                }
+            if !supported_input(&path) { continue; }
+            let metadata = match source_io::metadata(&path) {
+                Ok(meta) => meta,
+                Err(error) => { errors.push(format!("{}：{error}", display_name(&path))); continue; }
             };
+            if !metadata.is_file { continue; }
+            let canonical = metadata.canonical;
             if !known.insert(path_key(&canonical)) {
                 continue;
             }
@@ -199,23 +217,163 @@ impl Backend {
         photos.retain(|photo| !existing.contains(&path_key(Path::new(&photo.path))));
         let mut candidate = data.clone();
         candidate.photos.extend(photos.clone());
+        let mut expired = Vec::new();
+        if !photos.is_empty() {
+            expired = candidate.catalog_history.redo.drain(..).collect();
+            candidate.catalog_revision = candidate.catalog_revision.saturating_add(1);
+            let before = Self::current_selection(&data);
+            candidate.photo_selection = Some(if before.active_id.is_empty() {
+                PhotoSelection::single(candidate.photos[0].id.clone())
+            } else { before });
+        }
         self.commit(&mut data, candidate)?;
-        Ok(ImportResult { photos, errors })
+        self.release_removal_thumbnails(&data, expired);
+        Ok(ImportResult { photos, errors, catalog_revision: data.catalog_revision, photo_selection: Self::current_selection(&data) })
     }
 
-    pub fn remove_photos(&self, ids: Vec<String>) -> Result<(), String> {
+    #[cfg(test)]
+    pub fn remove_photos(&self, ids: Vec<String>) -> Result<Option<PhotoRemovalReceipt>, String> {
+        self.remove_photos_with_selection(ids, None)
+    }
+
+    pub fn remove_photos_with_selection(&self, ids: Vec<String>, selection: Option<PhotoSelection>) -> Result<Option<PhotoRemovalReceipt>, String> {
         let ids: HashSet<String> = ids.into_iter().collect();
         let mut data = self.lock()?;
+        if self.worker_active.load(Ordering::Acquire) {
+            return Err("请等待当前操作完成后再移除照片".into());
+        }
+        let removed = self.removal_metadata(&data, &ids);
+        if removed.is_empty() { return Ok(None); }
+        let order: Vec<String> = data.photos.iter().map(|p| p.id.clone()).collect();
+        let before = selection.unwrap_or_else(|| Self::current_selection(&data)).restored(&order, &HashMap::new());
+        let id = uuid::Uuid::new_v4().to_string();
+        let photo_ids: Vec<String> = removed.iter().map(|p| p.id.clone()).collect();
+        let record = RemovedPhotos { id: id.clone(), order: order.clone(), photos: removed, selection: before.clone() };
         let mut candidate = data.clone();
-        candidate.photos.retain(|photo| !ids.contains(&photo.id));
+        candidate.photos.retain(|p| !ids.contains(&p.id));
+        candidate.photo_selection = Some(before.after_removal(&order, &ids));
+        candidate.catalog_revision = candidate.catalog_revision.saturating_add(1);
+        let mut expired: Vec<_> = candidate.catalog_history.redo.drain(..).collect();
+        candidate.catalog_history.undo.push_back(record);
+        expired.extend(candidate.catalog_history.trim());
+        // Membership, order, selection and both stacks are one atomic journal commit.
         self.commit(&mut data, candidate)?;
-        self.storage.forget_thumbnails(&ids);
+        self.release_removal_thumbnails(&data, expired);
+        let receipt = PhotoRemovalReceipt { id, count: photo_ids.len(), photo_ids, catalog_revision: data.catalog_revision, photo_selection: Self::current_selection(&data) };
         let empty = data.photos.is_empty();
         drop(data);
-        if empty {
-            imaging::clear_image_cache();
+        if empty { imaging::clear_image_cache(); }
+        Ok(Some(receipt))
+    }
+
+    pub fn undo_photo_removal(&self, undo_id: String) -> Result<RestoredPhotos, String> {
+        let mut data = self.lock()?;
+        if self.worker_active.load(Ordering::Acquire) {
+            return Err("请等待当前操作完成后再撤销移除".into());
         }
-        Ok(())
+        let record = data.catalog_history.undo.back().filter(|r| r.id == undo_id).ok_or("这条移除记录已不在当前撤销历史中")?;
+        let mut candidate = data.clone();
+        let mut paths: HashMap<String, String> = candidate.photos.iter().map(|p| (path_key(Path::new(&p.path)), p.id.clone())).collect();
+        let mut id_map = HashMap::new();
+        for photo in &record.photos {
+            let key = path_key(Path::new(&photo.path));
+            let id = if let Some(existing) = paths.get(&key) { existing.clone() } else {
+                candidate.photos.push(photo.clone());
+                paths.insert(key, photo.id.clone());
+                photo.id.clone()
+            };
+            id_map.insert(photo.id.clone(), id);
+        }
+        let current_order: Vec<String> = candidate.photos.iter().map(|p| p.id.clone()).collect();
+        let mut pool: HashMap<String, Photo> = candidate.photos.drain(..).map(|p| (p.id.clone(), p)).collect();
+        for id in record.order.iter().map(|id| id_map.get(id).unwrap_or(id)).chain(current_order.iter()) {
+            if let Some(photo) = pool.remove(id) { candidate.photos.push(photo); }
+        }
+        let order: Vec<String> = candidate.photos.iter().map(|p| p.id.clone()).collect();
+        candidate.photo_selection = Some(record.selection.restored(&order, &id_map));
+        candidate.catalog_revision = candidate.catalog_revision.saturating_add(1);
+        let restored_record = candidate.catalog_history.undo.pop_back().unwrap();
+        let targets = id_map.values().cloned().collect();
+        let restored = self.removal_metadata(&candidate, &targets);
+        candidate.catalog_history.redo.push_back(RemovedPhotos { id: restored_record.id.clone(), order: Vec::new(), photos: restored, selection: Self::current_selection(&candidate) });
+        self.commit(&mut data, candidate)?;
+        self.release_removal_thumbnails(&data, vec![restored_record]);
+        let mut photos = data.photos.clone();
+        let catalog_revision = data.catalog_revision;
+        let photo_selection = Self::current_selection(&data);
+        drop(data);
+        for photo in &mut photos {
+            if photo.thumbnail.is_empty() { photo.thumbnail = self.storage.cached_thumbnail(&photo.id); }
+        }
+        Ok(RestoredPhotos { photos, id_map, catalog_revision, photo_selection })
+    }
+
+    #[cfg(test)]
+    pub fn redo_photo_removal(&self, redo_id: String) -> Result<PhotoRemovalReceipt, String> {
+        self.redo_photo_removal_with_selection(redo_id, None)
+    }
+
+    pub fn redo_photo_removal_with_selection(&self, redo_id: String, selection: Option<PhotoSelection>) -> Result<PhotoRemovalReceipt, String> {
+        let mut data = self.lock()?;
+        if self.worker_active.load(Ordering::Acquire) {
+            return Err("请等待当前操作完成后再重做移除".into());
+        }
+        let record = data.catalog_history.redo.back().filter(|r| r.id == redo_id).ok_or("这条移除记录已不在当前重做历史中")?;
+        let ids: HashSet<String> = record.photos.iter().map(|p| p.id.clone()).collect();
+        if ids.is_empty() || !ids.iter().all(|id| data.photos.iter().any(|p| p.id == *id)) {
+            return Err("当前照片列表已变化，请重试".into());
+        }
+        let id = record.id.clone();
+        let order: Vec<String> = data.photos.iter().map(|p| p.id.clone()).collect();
+        let before = selection.unwrap_or_else(|| Self::current_selection(&data)).restored(&order, &HashMap::new());
+        let photo_ids = order.iter().filter(|id| ids.contains(*id)).cloned().collect();
+        let removed = self.removal_metadata(&data, &ids);
+        let mut candidate = data.clone();
+        candidate.photos.retain(|p| !ids.contains(&p.id));
+        candidate.photo_selection = Some(before.after_removal(&order, &ids));
+        candidate.catalog_revision = candidate.catalog_revision.saturating_add(1);
+        candidate.catalog_history.redo.pop_back();
+        candidate.catalog_history.undo.push_back(RemovedPhotos { id: id.clone(), order, photos: removed, selection: before });
+        self.commit(&mut data, candidate)?;
+        let receipt = PhotoRemovalReceipt { id, count: ids.len(), photo_ids, catalog_revision: data.catalog_revision, photo_selection: Self::current_selection(&data) };
+        let empty = data.photos.is_empty();
+        drop(data);
+        if empty { imaging::clear_image_cache(); }
+        Ok(receipt)
+    }
+
+    pub fn save_photo_selection(&self, selection: PhotoSelection, catalog_revision: u64) -> Result<bool, String> {
+        let mut data = self.lock()?;
+        // A delayed selection from before an import/undo/redo must never overwrite
+        // the new operation's selection, including after a process restart.
+        if data.catalog_revision != catalog_revision { return Ok(false); }
+        let order: Vec<String> = data.photos.iter().map(|p| p.id.clone()).collect();
+        let selection = selection.restored(&order, &HashMap::new());
+        if data.photo_selection.as_ref() == Some(&selection) { return Ok(true); }
+        self.storage.save_photo_selection(catalog_revision, &selection)?;
+        data.photo_selection = Some(selection);
+        Ok(true)
+    }
+
+    fn current_selection(data: &StoredState) -> PhotoSelection {
+        let order: Vec<String> = data.photos.iter().map(|p| p.id.clone()).collect();
+        data.photo_selection.clone().unwrap_or_else(|| PhotoSelection::single(order.first().cloned().unwrap_or_default())).restored(&order, &HashMap::new())
+    }
+
+    fn removal_metadata(&self, data: &StoredState, ids: &HashSet<String>) -> Vec<Photo> {
+        data.photos.iter().filter(|p| ids.contains(&p.id)).map(|p| {
+            let _ = self.storage.cache_thumbnail(&p.id, &p.thumbnail);
+            let mut metadata = p.clone();
+            metadata.thumbnail = String::new();
+            metadata
+        }).collect()
+    }
+
+    fn release_removal_thumbnails(&self, data: &StoredState, expired: Vec<RemovedPhotos>) {
+        let retained: HashSet<&str> = data.photos.iter().map(|p| p.id.as_str())
+            .chain(data.catalog_history.undo.iter().chain(&data.catalog_history.redo).flat_map(|r| r.photos.iter().map(|p| p.id.as_str()))).collect();
+        let unused = expired.into_iter().flat_map(|r| r.photos).filter(|p| !retained.contains(p.id.as_str())).map(|p| p.id).collect();
+        self.storage.forget_thumbnails(&unused);
     }
 
     pub fn preview(
@@ -238,6 +396,9 @@ impl Backend {
         let mut settings = settings.clone();
         self.storage.resolve_missing_assets(&mut settings)?;
         let mut result = imaging::preview(Path::new(&path), &settings, 1400)?;
+        if generation != self.preview_generation.load(Ordering::Acquire) {
+            return Err("预览设置已更新。".into());
+        }
         if needs_thumbnail {
             // A successful preview already decoded this source. Backfill the
             // migration cache lazily, never as a prerequisite for app startup.
@@ -248,6 +409,9 @@ impl Backend {
                 }
                 result.source_thumbnail = Some(thumbnail);
             }
+        }
+        if generation != self.preview_generation.load(Ordering::Acquire) {
+            return Err("预览设置已更新。".into());
         }
         Ok(result)
     }
@@ -429,6 +593,21 @@ impl Backend {
         self.commit(&mut data, candidate)?;
         Ok(template)
     }
+    /// Refresh catalogue images for older saved templates without rewriting
+    /// their styles, names or stored records. Only run when opening the library.
+    pub fn frame_template_previews(
+        &self,
+    ) -> Result<std::collections::HashMap<String, String>, String> {
+        let templates = self.lock()?.frame_templates.clone();
+        let _gate = self.image_gate.lock().unwrap_or_else(|p| p.into_inner());
+        let mut previews = std::collections::HashMap::new();
+        for template in templates {
+            if let Ok(thumbnail) = imaging::frame_thumbnail(&template.settings) {
+                previews.insert(template.id, thumbnail);
+            }
+        }
+        Ok(previews)
+    }
     pub fn delete_frame_template(&self, id: &str) -> Result<(), String> {
         let mut data = self.lock()?;
         let mut candidate = data.clone();
@@ -468,6 +647,7 @@ impl Backend {
                     source_path: p.path.clone(),
                     status: "pending".into(),
                     output_path: None,
+                    temporary_path: None,
                     error: None,
                     width: None,
                     height: None,
@@ -551,6 +731,7 @@ impl Backend {
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .map_err(|_| "已有导出任务正在进行。")?;
         self.cancelled.store(false, Ordering::Release);
+        source_io::clear_failures();
         Ok(())
     }
 
@@ -621,7 +802,9 @@ impl Backend {
                     let settings = batch.settings.clone();
                     let directory = PathBuf::from(&batch.output_directory);
                     let snapshot = batch.clone();
-                    self.storage.save(&data)?;
+                    // export_one commits "running" together with ownership of
+                    // its temporary file before writing pixels. Until then,
+                    // the durable queue can safely remain "pending".
                     (Some((index, item, settings, directory)), snapshot)
                 } else {
                     batch.status = if batch.items.iter().any(|item| item.status == "cancelled") {
@@ -657,12 +840,20 @@ impl Backend {
                     batch.items[index].height = Some(height);
                     batch.items[index].error = None;
                 }
+                Err(error) if error == source_io::CANCELLED && self.cancelled.load(Ordering::Acquire) => {
+                    batch.items[index].status = "cancelled".into();
+                    batch.items[index].error = None;
+                    batch.items[index].output_path = None;
+                    batch.items[index].width = None;
+                    batch.items[index].height = None;
+                }
                 Err(error) => {
                     batch.items[index].status = "failed".into();
                     batch.items[index].error = Some(error);
                     batch.items[index].output_path = None;
                 }
             }
+            batch.items[index].temporary_path = None;
             batch.revision = batch.revision.saturating_add(1);
             let snapshot = batch.clone();
             self.storage.save(&data)?;
@@ -680,12 +871,23 @@ impl Backend {
     ) -> Result<(PathBuf, u32, u32), String> {
         let _image = self.image_gate.lock().unwrap_or_else(|p| p.into_inner());
         let mut temporary = tempfile::Builder::new()
-            .prefix(".liubai-")
+            .prefix(&format!(".margin-{}-", item.id))
             .suffix(".tmp")
             .tempfile_in(directory)
             .map_err(|e| format!("无法创建导出文件，请检查目录权限与磁盘空间：{e}"))?;
+        {
+            let mut data = self.lock()?;
+            let batch = data.batch.as_mut().ok_or("导出任务不存在。")?;
+            batch.items[index].temporary_path =
+                Some(temporary.path().to_string_lossy().into_owned());
+            batch.revision = batch.revision.saturating_add(1);
+            // Persist ownership before writing pixels, so interrupted attempts
+            // can be cleaned without scanning/deleting unrelated user files.
+            self.storage.save(&data)?;
+        }
         let (width, height) =
-            imaging::export_image(Path::new(&item.source_path), settings, temporary.path())?;
+            source_io::with_cancel(self.cancelled.clone(), ||
+                imaging::export_image(Path::new(&item.source_path), settings, temporary.path()))?;
         temporary
             .as_file()
             .sync_all()
@@ -753,6 +955,28 @@ impl Backend {
     }
 }
 
+fn remove_owned_temporary(directory: &Path, id: &str, path: &Path) -> Result<(), String> {
+    let owned_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|name| name.starts_with(&format!(".margin-{id}-")) && name.ends_with(".tmp"));
+    if uuid::Uuid::parse_str(id).is_err()
+        || !directory.is_absolute()
+        || path.parent() != Some(directory)
+        || !owned_name
+    {
+        return Err("上次的导出临时路径与任务不符，已保留文件。".into());
+    }
+    match fs::symlink_metadata(path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Ok(meta) if meta.file_type().is_file() && !meta.file_type().is_symlink() => {
+            fs::remove_file(path).map_err(|e| format!("无法清理上次未完成的导出临时文件：{e}"))
+        }
+        Ok(_) => Err("上次的导出临时文件类型异常，已保留文件。".into()),
+        Err(e) => Err(format!("无法清理上次未完成的导出临时文件：{e}")),
+    }
+}
+
 fn prepare_output_directory(raw: &str) -> Result<PathBuf, String> {
     if raw.trim().is_empty() {
         return Err("请选择导出目录。".into());
@@ -778,10 +1002,8 @@ fn supported_input(path: &Path) -> bool {
 }
 
 fn path_key(path: &Path) -> String {
-    let key = fs::canonicalize(path)
-        .unwrap_or_else(|_| path.to_path_buf())
-        .to_string_lossy()
-        .into_owned();
+    // Imported paths are canonical already. Never perform source I/O under the state lock.
+    let key = path.to_string_lossy().into_owned();
     if cfg!(target_os = "windows") {
         key.to_lowercase()
     } else {
@@ -823,6 +1045,21 @@ fn safe_stem(path: &Path) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    #[test]
+    fn an_in_flight_preview_is_obsolete_when_a_later_request_arrives() {
+        use std::ffi::CString;
+        let root=tempfile::tempdir().unwrap();let fixtures=root.path().join("margin-read-fixtures");fs::create_dir(&fixtures).unwrap();let path=fixtures.join("regular.jpg");RgbImage::from_pixel(32,24,Rgb([20,40,60])).save(&path).unwrap();
+        let backend=Backend::new(root.path().join("state")).unwrap();let photo=backend.import_photos(vec![path.to_string_lossy().into()]).unwrap().photos.remove(0);
+        let fifo=CString::new(path.with_extension("margin-qa-pipe").to_string_lossy().as_bytes()).unwrap();assert_eq!(unsafe{libc::mkfifo(fifo.as_ptr(),0o600)},0);fs::write(path.with_extension("margin-qa-block"),b"QA").unwrap();
+        let old_backend=backend.clone();let old_id=photo.id.clone();let old=std::thread::spawn(move||old_backend.preview(&old_id,&RenderSettings::default()));
+        let at=std::time::Instant::now();while !path.with_extension("margin-qa-entered").is_file()&&at.elapsed()<Duration::from_secs(2){std::thread::sleep(Duration::from_millis(2));}
+        let reached=path.with_extension("margin-qa-entered").is_file();let current_backend=backend.clone();let id=photo.id.clone();let current=std::thread::spawn(move||{let mut settings=RenderSettings::default();settings.border_percent=10.0;current_backend.preview(&id,&settings)});
+        let at=std::time::Instant::now();while backend.preview_generation.load(Ordering::Acquire)<2&&at.elapsed()<Duration::from_secs(2){std::thread::sleep(Duration::from_millis(2));}
+        fs::remove_file(path.with_extension("margin-qa-block")).unwrap();let fd=unsafe{libc::open(fifo.as_ptr(),libc::O_WRONLY|libc::O_NONBLOCK)};if fd>=0{unsafe{libc::close(fd);}}
+        let old=old.join().unwrap();let current=current.join().unwrap();assert!(reached);assert!(old.is_err_and(|e|e=="预览设置已更新。"),"An old in-flight preview returned success after a newer request");assert!(current.is_ok());
+    }
+
     #[test]
     fn successful_preview_backfills_a_missing_legacy_thumbnail_cache() {
         let dir = tempfile::tempdir().unwrap();
@@ -975,6 +1212,37 @@ mod tests {
             assert!(start.elapsed() < Duration::from_secs(60), "batch timed out");
             std::thread::sleep(Duration::from_millis(10));
         }
+    }
+
+    #[test]
+    fn temporary_recovery_removes_only_the_recorded_regular_file_owned_by_that_job() {
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("exports");
+        fs::create_dir(&output).unwrap();
+        let id = uuid::Uuid::new_v4().to_string();
+        let name = format!(".margin-{id}-qa.tmp");
+        let owned = output.join(&name);
+        fs::write(&owned, b"partial owned export").unwrap();
+        remove_owned_temporary(&output, &id, &owned).unwrap();
+        assert!(!owned.exists());
+        let original = output.join("original.jpg");
+        fs::write(&original, b"keep original").unwrap();
+        assert!(remove_owned_temporary(&output, &id, &original).is_err());
+        let outside = dir.path().join(&name);
+        fs::write(&outside, b"outside output").unwrap();
+        assert!(remove_owned_temporary(&output, &id, &outside).is_err());
+        assert!(outside.exists());
+        let legacy = output.join(".liubai-old.tmp");
+        fs::write(&legacy, b"untracked legacy data").unwrap();
+        assert!(remove_owned_temporary(&output, &id, &legacy).is_err());
+        assert!(legacy.exists());
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&original, &owned).unwrap();
+            assert!(remove_owned_temporary(&output, &id, &owned).is_err());
+            assert!(owned.symlink_metadata().unwrap().file_type().is_symlink());
+        }
+        assert_eq!(fs::read(&original).unwrap(), b"keep original");
     }
 
     #[test]
@@ -1163,6 +1431,7 @@ mod tests {
                     .into_owned(),
                 status: "running".into(),
                 output_path: Some(output.to_string_lossy().into_owned()),
+                temporary_path: None,
                 error: None,
                 width: Some(22),
                 height: Some(24),

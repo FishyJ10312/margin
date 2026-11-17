@@ -107,6 +107,7 @@ fn export_checked(source: &Path, settings: &RenderSettings, path: &Path) -> Resu
     Ok(())
 }
 fn main() -> Result<(), String> {
+    if liubai_lib::source_io::worker_entry_if_requested() { return Ok(()); }
     let args: Vec<String> = std::env::args().collect();
     if !args.iter().any(|v| v == "--live") {
         return Err(

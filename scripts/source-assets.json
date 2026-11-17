@@ -1,0 +1,18 @@
+{
+  "native-sources/libde265-1.1.3.tar.gz": "554228bd17788c99a7e63b37ab5634722190e6e2bf60c1dcb01cef328e133905",
+  "native-sources/libheif-1.23.7.tar.gz": "f7483e818503ea6224c8863e4a56ac02c7089021a98472c811c12aa19faf2475",
+  "src-tauri/icons/128x128.png": "c31a91adfc766992d527ef8b7b5bc5148639d4d1f773b616881fbcf0ae722d0d",
+  "src-tauri/icons/128x128@2x.png": "d112cf3f42582aadaf144608cbe7a34c2d8fb954ff0c588864c084f5f7e91f71",
+  "src-tauri/icons/32x32.png": "479f455304eae5b82eb67ea4c10515f3f26a1ad20af3357d20881b0afd0586c8",
+  "src-tauri/icons/app-icon.png": "3cdb64ee6881228ef1aebb0523fe56e9865b149ae92a0ab2f11461a1ab5936be",
+  "src-tauri/icons/icon.icns": "31fef2160cccb787d95a45f7c66e45e73918147ee5d6c62e843284dd2660406c",
+  "src-tauri/icons/icon.ico": "fc377ecdd56d36bdda673f0284bfa4df147eb601fa5e8826a22bcf14ad45f7d3",
+  "src-tauri/resources/MaShanZheng-Regular.ttf": "6d2546bb189c732a8ca29af9e22457b152387d158aa459e4ac2ce1e51788b7fb",
+  "src-tauri/resources/ZCOOLXiaoWei-Regular.ttf": "a42b620140f493db42f741351dfbf343c0936d58588ee8004b8b2a218d997ff1",
+  "src-tauri/resources/art/eucalyptus-watercolor.png": "78d13ea8f818311f3d2af509bfd3ee3a09bf2b073050336293e82de4f7ae3fd6",
+  "src-tauri/resources/default-font.otf": "faa6c9df652116dde789d351359f3d7e5d2285a2b2a1f04a2d7244df706d5ea9",
+  "src-tauri/test-fixtures/oauth-test-only.pem": "d058ca62adfc98494f069edeb2e5c783b09c3e044a1427768bccae696cce81b2",
+  "tests/example.heic": "7f8b363e4936c0666a25f64f3a92fda10bd8e5453be4592530b65a55dd98f3f2",
+  "tests/fixtures/apple-10bit-ambiguous.heic": "34e8421e060d11297bca501931dbcf688754c0f4764952c46f053e0d30821fc8",
+  "tests/fixtures/apple-synthetic.heic": "87902a64f369c42b459812ce588bb46f2bced5f568fb43750ebf8ec82ca5a451"
+}

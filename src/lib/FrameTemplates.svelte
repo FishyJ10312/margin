@@ -10,13 +10,15 @@
  export let templates:FrameTemplate[]=[];
  export let draft:RenderSettings|null=null;
  export let initialName='';
+ export let initialCategory='all';
  export let onsave:(name:string,settings:RenderSettings)=>Promise<void>;
  export let ondelete:(id:string)=>Promise<void>;
  export let onapply:(settings:RenderSettings)=>void;
  export let onclose:()=>void;
  type Choice={id:string;name:string;description:string;settings:RenderSettings;thumbnail:string};
  const clone=<T,>(v:T):T=>JSON.parse(JSON.stringify(v));
- let builtins:BuiltinFrame[]=[],tab='design',category='all',fetching=true;
+ let builtins:BuiltinFrame[]=[],tab='design',category=initialCategory,fetching=true;
+ let savedPreviews:Record<string,string>={};
  let dialog:HTMLDialogElement,name=initialName||$t('我的艺术边框'),busy=false,problem='',saved=false;
  let chosen:Choice|null=null,candidate:RenderSettings|null=null,selectedId='',keepLayout=true;
  let previewData='',previewError='',previewPending=false,compare=false,alive=true,ready=false;
@@ -28,11 +30,12 @@
  $: if(ready&&serialized)schedule(photo?.id||'',serialized);
  onMount(()=>{dialog.showModal();if(draft)tab='mine';void load();});
  onDestroy(()=>{alive=false;version++;queued=null;clearTimeout(timer);});
- async function load(){fetching=true;try{builtins=await invoke<BuiltinFrame[]>('list_builtin_frames');if(!alive)return;if(!chosen&&draft)choose({id:'draft',name:initialName||$t('待保存方案'),description:'',settings:draft,thumbnail:''});else if(!chosen&&builtins.length)pickBuiltin(builtins[0]);}catch(e){problem=String(e);}finally{if(alive){fetching=false;ready=true;}}}
+ async function load(){fetching=true;try{const [catalog,personal]=await Promise.all([invoke<BuiltinFrame[]>('list_builtin_frames'),templates.length?invoke<Record<string,string>>('get_frame_template_previews'):Promise.resolve({})]);if(!alive)return;builtins=catalog;savedPreviews=personal||{};if(chosen&&savedPreviews[chosen.id])chosen={...chosen,thumbnail:savedPreviews[chosen.id]};if(!chosen&&draft)choose({id:'draft',name:initialName||$t('待保存方案'),description:'',settings:draft,thumbnail:''});else if(!chosen&&builtins.length)pickBuiltin(builtins.find(v=>category==='all'||v.category===category)||builtins[0]);}catch(e){problem=String(e);}finally{if(alive){fetching=false;ready=true;}}}
  function choose(item:Choice){chosen=item;selectedId=item.id;compare=false;candidate={...clone(item.settings),ratio:clone(keepLayout?currentSettings.ratio:item.settings.ratio),borderPercent:keepLayout?currentSettings.borderPercent:item.settings.borderPercent,watermark:clone(currentSettings.watermark),export:clone(currentSettings.export)};}
  function pickBuiltin(v:BuiltinFrame){choose({id:v.id,name:$language==='en'?v.englishName:v.name,description:$t(v.description),settings:v.settings,thumbnail:v.thumbnail});}
  function setCategory(value:string){category=value;const first=builtins.find(v=>value==='all'||v.category===value);if(first)pickBuiltin(first);}
- function setTab(value:string){tab=value;if(value==='mine'){if(draft)choose({id:'draft',name:initialName||$t('待保存方案'),description:'',settings:draft,thumbnail:''});else if(templates[0])choose({...templates[0],description:''});}else{const first=builtins.find(v=>category==='all'||v.category===category);if(first)pickBuiltin(first);}}
+ function pickSaved(item:FrameTemplate){choose({...item,thumbnail:savedPreviews[item.id]||item.thumbnail,description:''});}
+ function setTab(value:string){tab=value;if(value==='mine'){if(draft)choose({id:'draft',name:initialName||$t('待保存方案'),description:'',settings:draft,thumbnail:''});else if(templates[0])pickSaved(templates[0]);}else{const first=builtins.find(v=>category==='all'||v.category===category);if(first)pickBuiltin(first);}}
  function layoutChoice(){if(!candidate||!chosen)return;candidate.ratio=clone(keepLayout?currentSettings.ratio:chosen.settings.ratio);candidate.borderPercent=keepLayout?currentSettings.borderPercent:chosen.settings.borderPercent;}
  function schedule(photoId:string,value:string){const settings:RenderSettings=JSON.parse(value);version++;previewError='';if(!/^#[\dA-Fa-f]{6}$/.test(settings.frameColor)){queued=null;previewPending=false;previewError=$t('请输入六位 HEX 颜色');return;}if(!photoId){previewData=chosen?.thumbnail||'';previewPending=false;return;}queued={version,photoId,settings};previewPending=true;if(!timer)timer=setTimeout(()=>{timer=undefined;void drain();},70);}
  async function drain(){if(running)return;running=true;try{while(queued&&alive){const job=queued;queued=null;try{const result=await invoke<PreviewResult>('get_preview',{photoId:job.photoId,settings:job.settings});if(alive&&job.version===version){previewData=result.dataUrl;previewError='';previewPending=false;}}catch(e){if(alive&&job.version===version){previewError=String(e);previewPending=false;}}}}finally{running=false;}}
@@ -53,7 +56,7 @@
    {:else}
     {#if draft}<form on:submit|preventDefault={save}><label class="field-label" for="template-name">{$t('模板名称')}</label><div class="save-template"><input id="template-name" bind:value={name} maxlength="60" required placeholder={$t('为这个边框取个名字')}/><button class="button primary compact" disabled={busy||!name.trim()}>{#if busy}<LoaderCircle size={14} class="spin"/>{:else}<Plus size={14}/>{/if}{$t('保存模板')}</button></div><p class="field-help">{$t('只保存比例、边框与艺术图形，不包含照片、署名或模型凭据')}</p></form>{/if}
     {#if saved}<p class="template-saved" role="status">{$t('模板已保存，重新打开软件后仍可使用')}</p>{/if}
-    {#if templates.length}<fieldset class="template-grid"><legend class="sr-only">{$t('我的模板')}</legend>{#each templates as item(item.id)}<article class="saved-card"><label class="style-card" class:selected={selectedId===item.id}><input type="radio" name="frame-choice" value={item.id} checked={selectedId===item.id} on:change={()=>choose({...item,description:''})}/><img src={item.thumbnail} alt="" loading="lazy"/><strong>{item.name}</strong></label><button type="button" class="icon-button delete-template" disabled={busy} aria-label={$t('删除模板 {0}',{0:item.name})} on:click={()=>remove(item.id)}><Trash2 size={13}/></button></article>{/each}</fieldset>{:else}<p class="templates-empty">{$t('还没有边框模板')}</p>{/if}
+    {#if fetching}<p class="loading" role="status"><LoaderCircle size={16} class="spin"/>{$t('准备设计模板')}</p>{:else if templates.length}<fieldset class="template-grid"><legend class="sr-only">{$t('我的模板')}</legend>{#each templates as item(item.id)}<article class="saved-card"><label class="style-card" class:selected={selectedId===item.id}><input type="radio" name="frame-choice" value={item.id} checked={selectedId===item.id} on:change={()=>pickSaved(item)}/><img src={savedPreviews[item.id]||item.thumbnail} alt="" loading="lazy" width="360" height="256"/><strong>{item.name}</strong></label><button type="button" class="icon-button delete-template" disabled={busy} aria-label={$t('删除模板 {0}',{0:item.name})} on:click={()=>remove(item.id)}><Trash2 size={13}/></button></article>{/each}</fieldset>{:else}<p class="templates-empty">{$t('还没有边框模板')}</p>{/if}
    {/if}
    {#if problem}<p class="field-error" role="alert">{$t(problem)}</p>{/if}
   </div>

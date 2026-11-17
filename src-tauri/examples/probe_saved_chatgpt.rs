@@ -5,6 +5,7 @@ use liubai_lib::{
 };
 use std::{fs, path::PathBuf};
 fn main() -> Result<(), String> {
+    if liubai_lib::source_io::worker_entry_if_requested() { return Ok(()); }
     let args: Vec<_> = std::env::args().collect();
     if args.get(1).map(String::as_str) != Some("--live") {
         return Err("--live required".into());

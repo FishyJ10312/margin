@@ -3,7 +3,6 @@ use std::{
     io::{BufWriter, Cursor, Write},
     path::{Path, PathBuf},
     sync::{Arc, Mutex, OnceLock},
-    time::SystemTime,
 };
 
 use base64::{engine::general_purpose::STANDARD, Engine};
@@ -22,6 +21,7 @@ use libheif_rs::{
 };
 
 use crate::{
+    source_io,
     layout::{self, Layout},
     model::{
         ColorSample, FontOption, ImageInfo, PixelRect, PreviewResult, RenderSettings,
@@ -37,7 +37,7 @@ struct LoadedImage {
 struct CachedImage {
     path: PathBuf,
     len: u64,
-    modified: Option<SystemTime>,
+    modified: Option<u128>,
     image: Arc<LoadedImage>,
 }
 static CACHE: OnceLock<Mutex<Option<CachedImage>>> = OnceLock::new();
@@ -49,9 +49,13 @@ const MAX_FILE_BYTES: u64 = 128 * 1024 * 1024;
 const WORKING_BUDGET: u64 = 1024 * 1024 * 1024;
 const WATERMARK_RESERVE: u64 = 128 * 1024 * 1024;
 
+#[cfg(test)]
+#[path = "imaging_boundary_tests.rs"]
+mod boundary_tests;
+
 fn check_decode_budget(width: u32, height: u32, file_bytes: u64, heif: bool) -> Result<(), String> {
     let bytes = u64::from(width) * u64::from(height) * if heif { 20 } else { 16 } + file_bytes;
-    if bytes > WORKING_BUDGET {
+    if bytes + source_io::abandoned_buffer_bytes() > WORKING_BUDGET {
         return Err("照片解码预计占用过多内存，请先缩小照片后导入".into());
     }
     Ok(())
@@ -68,7 +72,7 @@ fn check_render_budget(source: (u32, u32), l: Layout, watermark: bool) -> Result
     } else {
         0
     };
-    if source_bytes + canvas + scratch + if watermark { WATERMARK_RESERVE } else { 0 }
+    if source_bytes + canvas + scratch + source_io::abandoned_buffer_bytes() + if watermark { WATERMARK_RESERVE } else { 0 }
         > WORKING_BUDGET
     {
         return Err("预计处理内存过高，请在导出设置中限制长边，或减小边框与水印".into());
@@ -211,12 +215,12 @@ pub fn parse_color(value: &str) -> Result<[u8; 3], String> {
     Ok(rgb)
 }
 
-fn file_check(path: &Path) -> Result<fs::Metadata, String> {
-    let meta = fs::metadata(path).map_err(|e| failure("无法读取照片", e))?;
-    if !meta.is_file() {
+fn file_check(path: &Path) -> Result<source_io::Metadata, String> {
+    let meta = source_io::metadata(path)?;
+    if !meta.is_file {
         return Err("请选择图片文件，不能直接处理目录".into());
     }
-    if meta.len() > MAX_FILE_BYTES {
+    if meta.len > MAX_FILE_BYTES {
         return Err("单张照片文件超过 128 MB，请先缩小文件".into());
     }
     Ok(meta)
@@ -228,11 +232,115 @@ fn heif_path(path: &Path) -> bool {
         .is_some_and(|v| matches!(v.to_ascii_lowercase().as_str(), "heic" | "heif" | "hif"))
 }
 
+fn png_color_profile(bytes: &[u8]) -> Result<Option<Profile>, String> {
+    // image's decoder exposes iCCP but not cICP. Read bounded metadata through
+    // the same pinned PNG codec before allowing a silent HDR/wide-gamut relabel.
+    // PNG 3 section 11.3.2 gives cICP precedence over iCCP and sRGB.
+    let decoder = png::Decoder::new_with_limits(
+        Cursor::new(bytes),
+        png::Limits {
+            bytes: 8 * 1024 * 1024,
+        },
+    );
+    let reader = decoder
+        .read_info()
+        .map_err(|e| failure("PNG 颜色信息无效或过大", e))?;
+    let Some(cicp) = reader.info().coding_independent_code_points else {
+        let info = reader.info();
+        if info.icc_profile.is_some() {
+            return Ok(None);
+        }
+        if info.srgb.is_some() {
+            return Ok(Some(Profile::new_srgb()));
+        }
+        if info.gama_chunk.is_none() && info.chrm_chunk.is_none() {
+            return Ok(None);
+        }
+        let curve = if let Some(gamma) = info.gama_chunk {
+            let value = f64::from(gamma.into_scaled()) / 100_000.0;
+            if !(0.0001..=10.0).contains(&value) {
+                return Err("这张 PNG 的颜色曲线无效，请先转换为 SDR sRGB".into());
+            }
+            ToneCurve::new(1.0 / value)
+        } else {
+            srgb_curve()
+        };
+        let chroma = info.chrm_chunk.unwrap_or_else(|| {
+            png::SourceChromaticities::new(
+                (0.3127, 0.3290),
+                (0.64, 0.33),
+                (0.30, 0.60),
+                (0.15, 0.06),
+            )
+        });
+        let xy = |v: (png::ScaledFloat, png::ScaledFloat)| CIExyY {
+            x: f64::from(v.0.into_scaled()) / 100_000.0,
+            y: f64::from(v.1.into_scaled()) / 100_000.0,
+            Y: 1.0,
+        };
+        return Profile::new_rgb(
+            &xy(chroma.white),
+            &CIExyYTRIPLE {
+                Red: xy(chroma.red),
+                Green: xy(chroma.green),
+                Blue: xy(chroma.blue),
+            },
+            &[&curve, &curve, &curve],
+        )
+        .map(Some)
+        .map_err(|e| failure("PNG 颜色转换失败", e));
+    };
+    if matches!(cicp.transfer_function, 16 | 18) {
+        return Err("这张 PNG 使用 HDR PQ/HLG，暂不能可靠转换；请先导出为 SDR JPG 或 PNG".into());
+    }
+    if cicp.transfer_function != 13
+        || cicp.matrix_coefficients != 0
+        || !cicp.is_video_full_range_image
+        || !matches!(cicp.color_primaries, 1 | 12)
+    {
+        return Err("这张 PNG 的 cICP 颜色空间暂不支持，请先转换为 SDR sRGB".into());
+    }
+    if cicp.color_primaries == 1 {
+        return Ok(Some(Profile::new_srgb()));
+    }
+    let curve = srgb_curve();
+    let xy = |x, y| CIExyY { x, y, Y: 1.0 };
+    Profile::new_rgb(
+        &xy(0.3127, 0.3290),
+        &CIExyYTRIPLE {
+            Red: xy(0.68, 0.32),
+            Green: xy(0.265, 0.69),
+            Blue: xy(0.15, 0.06),
+        },
+        &[&curve, &curve, &curve],
+    )
+    .map(Some)
+    .map_err(|e| failure("PNG Display P3 转换失败", e))
+}
+
+fn srgb_curve() -> ToneCurve {
+    let values: Vec<u16> = (0..4096)
+        .map(|n| {
+            let x = f64::from(n) / 4095.0;
+            let linear = if x <= 0.04045 {
+                x / 12.92
+            } else {
+                ((x + 0.055) / 1.055).powf(2.4)
+            };
+            (linear * 65535.0).round() as u16
+        })
+        .collect();
+    ToneCurve::new_tabulated(&values)
+}
+
 pub fn inspect_image(path: &Path) -> Result<ImageInfo, String> {
-    file_check(path)?;
+    let input = source_io::read(path)?;
+    inspect_bytes(path, &input.bytes)
+}
+
+fn inspect_bytes(path: &Path, bytes: &[u8]) -> Result<ImageInfo, String> {
     if heif_path(path) {
         let _lib = LibHeif::new();
-        let bytes = fs::read(path).map_err(|e| failure("无法读取 HEIC", e))?;
         let ctx = HeifContext::read_from_bytes(&bytes)
             .map_err(|e| failure("HEIC 文件无效或已损坏", e))?;
         let handle = ctx
@@ -246,13 +354,12 @@ pub fn inspect_image(path: &Path) -> Result<ImageInfo, String> {
         check_decode_budget(
             info.width,
             info.height,
-            fs::metadata(path).map_err(|e| e.to_string())?.len(),
+            bytes.len() as u64,
             true,
         )?;
         return Ok(info);
     }
-    let reader = ImageReader::open(path)
-        .map_err(|e| failure("无法打开照片", e))?
+    let reader = ImageReader::new(Cursor::new(bytes))
         .with_guessed_format()
         .map_err(|e| failure("无法识别图片格式", e))?;
     if !matches!(
@@ -260,6 +367,9 @@ pub fn inspect_image(path: &Path) -> Result<ImageInfo, String> {
         Some(image::ImageFormat::Jpeg | image::ImageFormat::Png)
     ) {
         return Err("支持 JPG、PNG、HEIC 和 HEIF 照片".into());
+    }
+    if reader.format() == Some(image::ImageFormat::Png) {
+        png_color_profile(bytes)?;
     }
     let mut decoder = reader
         .into_decoder()
@@ -269,7 +379,7 @@ pub fn inspect_image(path: &Path) -> Result<ImageInfo, String> {
     check_decode_budget(
         width,
         height,
-        fs::metadata(path).map_err(|e| e.to_string())?.len(),
+        bytes.len() as u64,
         heif_path(path),
     )?;
     let orientation = decoder
@@ -290,26 +400,25 @@ pub fn inspect_image(path: &Path) -> Result<ImageInfo, String> {
 
 fn loaded(path: &Path) -> Result<Arc<LoadedImage>, String> {
     let meta = file_check(path)?;
-    let canonical = path
-        .canonicalize()
-        .map_err(|e| failure("照片路径无效", e))?;
+    let canonical = &meta.canonical;
     let mut cache = CACHE
         .get_or_init(|| Mutex::new(None))
         .lock()
         .map_err(|_| "图片缓存不可用，请重试")?;
-    let modified = meta.modified().ok();
+    let modified = meta.modified;
     if let Some(entry) = cache.as_ref() {
-        if entry.path == canonical && entry.len == meta.len() && entry.modified == modified {
+        if entry.path == *canonical && entry.len == meta.len && entry.modified == modified {
             return Ok(entry.image.clone());
         }
     }
     // Release the previous full-resolution image before decoding the next file.
     *cache = None;
     drop(cache);
+    let input = source_io::read(path)?;
     let decoded = if heif_path(path) {
-        decode_heif(path)?
+        decode_heif(&input.bytes)?
     } else {
-        decode_standard(path)?
+        decode_standard_bytes(path, &input.bytes)?
     };
     let image = Arc::new(decoded);
     let mut cache = CACHE
@@ -318,17 +427,22 @@ fn loaded(path: &Path) -> Result<Arc<LoadedImage>, String> {
         .lock()
         .map_err(|_| "图片缓存不可用")?;
     *cache = Some(CachedImage {
-        path: canonical,
-        len: meta.len(),
-        modified,
+        path: input.metadata.canonical,
+        len: input.metadata.len,
+        modified: input.metadata.modified,
         image: image.clone(),
     });
     Ok(image)
 }
 
+#[cfg(test)]
 fn decode_standard(path: &Path) -> Result<LoadedImage, String> {
-    let reader = ImageReader::open(path)
-        .map_err(|e| failure("无法打开照片", e))?
+    let input = source_io::read(path)?;
+    decode_standard_bytes(path, &input.bytes)
+}
+
+fn decode_standard_bytes(path: &Path, bytes: &[u8]) -> Result<LoadedImage, String> {
+    let reader = ImageReader::new(Cursor::new(bytes))
         .with_guessed_format()
         .map_err(|e| failure("无法识别图片格式", e))?;
     if !matches!(
@@ -337,6 +451,11 @@ fn decode_standard(path: &Path) -> Result<LoadedImage, String> {
     ) {
         return Err("支持 JPG、PNG、HEIC 和 HEIF 照片".into());
     }
+    let png_profile = if reader.format() == Some(image::ImageFormat::Png) {
+        png_color_profile(bytes)?
+    } else {
+        None
+    };
     let mut decoder = reader
         .into_decoder()
         .map_err(|e| failure("图片无效或已损坏", e))?;
@@ -345,7 +464,7 @@ fn decode_standard(path: &Path) -> Result<LoadedImage, String> {
     check_decode_budget(
         width,
         height,
-        fs::metadata(path).map_err(|e| e.to_string())?.len(),
+        bytes.len() as u64,
         heif_path(path),
     )?;
     let mut limits = image::Limits::default();
@@ -353,16 +472,22 @@ fn decode_standard(path: &Path) -> Result<LoadedImage, String> {
     decoder
         .set_limits(limits)
         .map_err(|e| failure("照片占用内存过大", e))?;
-    let icc = decoder
-        .icc_profile()
-        .map_err(|e| failure("无法读取颜色配置", e))?;
+    let icc = if png_profile.is_some() {
+        None
+    } else {
+        decoder
+            .icc_profile()
+            .map_err(|e| failure("无法读取颜色配置", e))?
+    };
     let orientation = decoder
         .orientation()
         .map_err(|e| failure("无法读取照片方向", e))?;
     let mut image = DynamicImage::from_decoder(decoder).map_err(|e| failure("图片解码失败", e))?;
     image.apply_orientation(orientation);
     let mut pixels = image.into_rgba8();
-    if let Some(icc) = icc.filter(|p| !p.is_empty()) {
+    if let Some(profile) = png_profile {
+        convert_profile(&mut pixels, &profile)?;
+    } else if let Some(icc) = icc.filter(|p| !p.is_empty()) {
         let profile = Profile::new_icc(&icc).map_err(|e| failure("照片颜色配置无效", e))?;
         convert_profile(&mut pixels, &profile)?;
     }
@@ -373,9 +498,8 @@ fn decode_standard(path: &Path) -> Result<LoadedImage, String> {
     })
 }
 
-fn decode_heif(path: &Path) -> Result<LoadedImage, String> {
+fn decode_heif(bytes: &[u8]) -> Result<LoadedImage, String> {
     let lib = LibHeif::new();
-    let bytes = fs::read(path).map_err(|e| failure("无法读取 HEIC", e))?;
     let ctx =
         HeifContext::read_from_bytes(&bytes).map_err(|e| failure("HEIC 文件无效或已损坏", e))?;
     let handle = ctx
@@ -422,8 +546,8 @@ fn decode_heif(path: &Path) -> Result<LoadedImage, String> {
     check_decode_budget(
         width,
         height,
-        fs::metadata(path).map_err(|e| e.to_string())?.len(),
-        heif_path(path),
+        bytes.len() as u64,
+        true,
     )?;
     let row_len = width as usize * 4;
     if plane.stride < row_len {
@@ -445,6 +569,17 @@ fn decode_heif(path: &Path) -> Result<LoadedImage, String> {
         let profile = Profile::new_icc(&raw.data).map_err(|e| failure("HEIC 颜色配置无效", e))?;
         convert_profile(&mut pixels, &profile)?;
     } else if let Some(color) = color {
+        if handle.luma_bits_per_pixel() > 8
+            && (matches!(
+                color.color_primaries(),
+                ColorPrimaries::Unknown | ColorPrimaries::Unspecified
+            ) || matches!(
+                color.transfer_characteristics(),
+                TransferCharacteristics::Unknown | TransferCharacteristics::Unspecified
+            ))
+        {
+            return Err("这张高位深 HEIC 缺少颜色信息，无法保证 SDR 颜色，请先转为 JPG".into());
+        }
         let profile = nclx_profile(color)?;
         convert_profile(&mut pixels, &profile)?;
     } else if handle.luma_bits_per_pixel() > 8 {
@@ -665,37 +800,7 @@ pub fn export_image(
     )?;
     let file = fs::File::create(destination).map_err(|e| failure("无法写入导出文件", e))?;
     let mut writer = BufWriter::new(file);
-    let icc = Profile::new_srgb()
-        .icc()
-        .map_err(|e| failure("无法生成 sRGB 配置", e))?;
-    if settings.export.format == "png" {
-        let mut encoder = PngEncoder::new(&mut writer);
-        encoder
-            .set_icc_profile(icc)
-            .map_err(|e| failure("无法写入 PNG 颜色配置", e))?;
-        encoder
-            .write_image(
-                result.as_raw(),
-                full.width,
-                full.height,
-                image::ExtendedColorType::Rgb8,
-            )
-            .map_err(|e| failure("PNG 导出失败", e))?;
-    } else {
-        let rgb = result;
-        let mut encoder = JpegEncoder::new_with_quality(&mut writer, settings.export.jpeg_quality);
-        encoder
-            .set_icc_profile(icc)
-            .map_err(|e| failure("无法写入 JPG 颜色配置", e))?;
-        encoder
-            .encode(
-                rgb.as_raw(),
-                full.width,
-                full.height,
-                image::ExtendedColorType::Rgb8,
-            )
-            .map_err(|e| failure("JPG 导出失败", e))?;
-    }
+    encode_rgb_image(&result, settings, &mut writer)?;
     writer
         .flush()
         .map_err(|e| failure("导出文件未写入完整，请检查磁盘空间", e))?;
@@ -704,6 +809,45 @@ pub fn export_image(
         .sync_all()
         .map_err(|e| failure("无法保存导出文件，请检查磁盘空间", e))?;
     Ok((full.width, full.height))
+}
+
+fn encode_rgb_image(
+    result: &RgbImage,
+    settings: &RenderSettings,
+    writer: &mut impl Write,
+) -> Result<(), String> {
+    let icc = Profile::new_srgb()
+        .icc()
+        .map_err(|e| failure("无法生成 sRGB 配置", e))?;
+    if settings.export.format == "png" {
+        let mut encoder = PngEncoder::new(&mut *writer);
+        encoder
+            .set_icc_profile(icc)
+            .map_err(|e| failure("无法写入 PNG 颜色配置", e))?;
+        encoder
+            .write_image(
+                result.as_raw(),
+                result.width(),
+                result.height(),
+                image::ExtendedColorType::Rgb8,
+            )
+            .map_err(|e| failure("PNG 导出失败", e))?;
+    } else {
+        let rgb = result;
+        let mut encoder = JpegEncoder::new_with_quality(&mut *writer, settings.export.jpeg_quality);
+        encoder
+            .set_icc_profile(icc)
+            .map_err(|e| failure("无法写入 JPG 颜色配置", e))?;
+        encoder
+            .encode(
+                rgb.as_raw(),
+                rgb.width(),
+                rgb.height(),
+                image::ExtendedColorType::Rgb8,
+            )
+            .map_err(|e| failure("JPG 导出失败", e))?;
+    }
+    Ok(())
 }
 
 fn blend_rgb(canvas: &mut RgbImage, source: &RgbaImage, x: u32, y: u32) {
@@ -795,19 +939,18 @@ fn watermark_bitmap(w: &WatermarkSettings, layout: Layout) -> Result<Option<Rgba
     let short = f64::from(layout.photo_width.min(layout.photo_height));
     let mut mark = if w.kind == "image" {
         let path = Path::new(w.image_path.as_ref().ok_or("请选择 PNG 水印")?);
-        file_check(path)?;
-        let format = ImageReader::open(path)
-            .map_err(|e| failure("无法读取 PNG 水印", e))?
+        let input = source_io::read(path)?;
+        let format = ImageReader::new(Cursor::new(&input.bytes))
             .with_guessed_format()
             .map_err(|e| failure("无法读取 PNG 水印", e))?;
         if format.format() != Some(image::ImageFormat::Png) {
             return Err("图片水印需要透明 PNG 文件".into());
         }
-        let dimensions = inspect_image(path)?;
+        let dimensions = inspect_bytes(path, &input.bytes)?;
         if u64::from(dimensions.width) * u64::from(dimensions.height) > 16_000_000 {
             return Err("PNG 水印过大，请使用不超过 1600 万像素的 Logo".into());
         }
-        let decoded = decode_standard(path)?.pixels;
+        let decoded = decode_standard_bytes(path, &input.bytes)?.pixels;
         let width = (short * w.size_percent / 100.0).round().max(1.0) as u32;
         let height = (f64::from(decoded.height()) * f64::from(width) / f64::from(decoded.width()))
             .round()
@@ -1384,11 +1527,12 @@ pub fn frame_thumbnail(settings: &RenderSettings) -> Result<String, String> {
     s.watermark.kind = "none".into();
     s.export.long_edge = Some(360);
     validate_settings(&s)?;
-    let source = RgbaImage::from_fn(480, 320, |x, y| {
-        Rgba([155 + (x / 8) as u8, 170 + (y / 8) as u8, 164, 255])
-    });
-    let l = layout::calculate(480, 320, &s)?;
-    let image = compose(&source, &s, l, None, None, l)?;
+    // A plain white sample keeps the frame itself in focus. Reuse one tiny
+    // local canvas; browsing never decodes a stock photo or accesses a network.
+    static SAMPLE: std::sync::OnceLock<RgbaImage> = std::sync::OnceLock::new();
+    let source = SAMPLE.get_or_init(|| RgbaImage::from_pixel(480, 320, Rgba([255, 255, 255, 255])));
+    let l = layout::calculate(source.width(), source.height(), &s)?;
+    let image = compose(source, &s, l, None, None, l)?;
     rgb_data_url(&image, 85)
 }
 

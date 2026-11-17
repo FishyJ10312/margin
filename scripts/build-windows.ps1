@@ -44,6 +44,6 @@ npm run check
 if ($LASTEXITCODE -ne 0) { throw 'UI type check failed.' }
 cargo test --manifest-path src-tauri/Cargo.toml --lib
 if ($LASTEXITCODE -ne 0) { throw 'Rust tests failed.' }
-npm run tauri -- build --config src-tauri/tauri.windows.generated.json
+node scripts/desktop-build.mjs --config src-tauri/tauri.windows.generated.json
 if ($LASTEXITCODE -ne 0) { throw 'Windows installer build failed.' }
 Write-Output 'Windows installer: src-tauri/target/release/bundle/nsis/'

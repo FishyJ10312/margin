@@ -1,0 +1,11 @@
+{
+  "productName": "Margin Privacy Candidate",
+  "identifier": "com.fishyj.margin.qa.privacy20261117",
+  "app": {
+    "windows": [{
+      "label": "main", "title": "Margin · Privacy Candidate",
+      "width": 1180, "height": 800, "minWidth": 900, "minHeight": 650,
+      "center": true, "backgroundColor": "#fbfcfa", "dragDropEnabled": true
+    }]
+  }
+}

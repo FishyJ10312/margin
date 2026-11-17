@@ -25,6 +25,7 @@ fn check(original: &Path, output: &Path, settings: &RenderSettings) -> Result<()
 }
 
 fn main() -> Result<(), String> {
+    if liubai_lib::source_io::worker_entry_if_requested() { return Ok(()); }
     let args: Vec<String> = std::env::args().collect();
     let fixture = PathBuf::from(args.get(1).ok_or("Expected fixture directory")?);
     let output = PathBuf::from(args.get(2).ok_or("Expected output directory")?);

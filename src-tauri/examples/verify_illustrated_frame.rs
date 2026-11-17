@@ -19,6 +19,7 @@ fn hash(p: &std::path::Path) -> Vec<u8> {
         .to_vec()
 }
 fn main() -> Result<(), String> {
+    if liubai_lib::source_io::worker_entry_if_requested() { return Ok(()); }
     let args: Vec<_> = std::env::args().collect();
     let source = PathBuf::from(args.get(1).ok_or("source")?);
     let settings = PathBuf::from(args.get(2).ok_or("settings")?);

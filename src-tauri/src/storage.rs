@@ -1,4 +1,4 @@
-use crate::app_models::StoredState;
+use crate::app_models::{PhotoSelection, StoredState};
 use crate::model::RenderSettings;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
@@ -8,6 +8,13 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tempfile::NamedTempFile;
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SavedPhotoSelection {
+    catalog_revision: u64,
+    selection: PhotoSelection,
+}
 
 pub struct Storage {
     pub directory: PathBuf,
@@ -78,28 +85,45 @@ impl Storage {
         if !path.exists() {
             return Ok((StoredState::default(), Vec::new()));
         }
-        match read_state(&path) {
-            Ok(state) => Ok((state, Vec::new())),
+        let (mut state, warnings) = match read_state(&path) {
+            Ok(state) => (state, Vec::new()),
             Err(error) => {
                 let backup = self.directory.join("state.backup.json");
                 if let Ok(state) = read_state(&backup) {
-                    Ok((
+                    (
                         state,
                         vec![format!("上次的设置文件无法读取，已恢复备份：{error}")],
-                    ))
+                    )
                 } else {
                     let preserved = self
                         .directory
                         .join(format!("state-damaged-{}.json", uuid::Uuid::new_v4()));
                     fs::copy(&path, &preserved)
                         .map_err(|e| format!("无法保留损坏的设置文件：{e}"))?;
-                    Ok((
+                    (
                         StoredState::default(),
                         vec!["上次的设置文件损坏，已保留副本并恢复默认设置。".into()],
-                    ))
+                    )
                 }
             }
+        };
+        // Selection-only edits use a small sidecar rather than rewriting up to
+        // twenty history records on each click. The revision ties it to one catalog.
+        let selection_path = self.directory.join("catalog-selection.json");
+        if fs::metadata(&selection_path).is_ok_and(|m| m.len() <= 2 * 1024 * 1024) {
+            if let Ok(saved) = File::open(&selection_path).map_err(|e| e.to_string()).and_then(|file| serde_json::from_reader::<_, SavedPhotoSelection>(file).map_err(|e| e.to_string())) {
+                if saved.catalog_revision == state.catalog_revision { state.photo_selection = Some(saved.selection); }
+            }
         }
+        Ok((state, warnings))
+    }
+
+    pub fn save_photo_selection(&self, catalog_revision: u64, selection: &PhotoSelection) -> Result<(), String> {
+        let data = serde_json::to_vec(&SavedPhotoSelection { catalog_revision, selection: selection.clone() }).map_err(|e| format!("无法保存照片选择：{e}"))?;
+        let mut temporary = NamedTempFile::new_in(&self.directory).map_err(|e| format!("无法保存照片选择：{e}"))?;
+        temporary.write_all(&data).and_then(|_| temporary.as_file().sync_all()).map_err(|e| format!("无法保存照片选择：{e}"))?;
+        temporary.persist(self.directory.join("catalog-selection.json")).map_err(|e| format!("无法保存照片选择：{}", e.error))?;
+        Ok(())
     }
 
     pub fn save(&self, state: &StoredState) -> Result<(), String> {
@@ -113,7 +137,13 @@ impl Storage {
         // photos, which may block on cloud storage, disks or OS access prompts.
         for photo in &mut compact.photos {
             let _ = self.cache_thumbnail(&photo.id, &photo.thumbnail);
-            photo.thumbnail.clear();
+            photo.thumbnail = String::new();
+        }
+        for record in compact.catalog_history.undo.iter_mut().chain(&mut compact.catalog_history.redo) {
+            for photo in &mut record.photos {
+                let _ = self.cache_thumbnail(&photo.id, &photo.thumbnail);
+                photo.thumbnail = String::new();
+            }
         }
         let data = serde_json::to_vec(&compact).map_err(|e| format!("无法保存本机设置：{e}"))?;
         let mut temporary =

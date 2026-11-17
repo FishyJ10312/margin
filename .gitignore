@@ -18,3 +18,8 @@ src-tauri/tauri.windows.generated.json
 
 # Local screenshots from interface acceptance.
 /tests/ui-*.png
+
+# Local Python caches and acceptance artifacts.
+__pycache__/
+.pytest_cache/
+/outputs/

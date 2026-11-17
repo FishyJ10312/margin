@@ -45,13 +45,13 @@
  {/if}
 </details>
 <style>
-.watermark-detail{position:absolute;inset-block-start:8px;inset-inline-end:8px;z-index:2;inline-size:160px;max-inline-size:calc(100% - 16px);margin:0;border:1px solid #d8e0d1;border-radius:6px;padding:6px;background:#f8faf5f5;box-shadow:0 2px 7px #24321b0d;}
-.detail-heading{display:flex;align-items:center;justify-content:space-between;gap:4px;min-block-size:20px;color:#4d6342;cursor:pointer;list-style:none;outline-offset:3px;}
+.watermark-detail{position:absolute;inset-block-start:8px;inset-inline-end:8px;z-index:2;inline-size:160px;max-inline-size:calc(100% - 16px);margin:0;border:1px solid var(--border);border-radius:6px;padding:6px;background:var(--surface);box-shadow:0 2px 8px #17231b10;}
+.detail-heading{display:flex;align-items:center;justify-content:space-between;gap:4px;min-block-size:22px;color:var(--ink);cursor:pointer;list-style:none;outline-offset:3px;}
 .detail-heading::-webkit-details-marker{display:none;}.detail-heading strong{display:flex;align-items:center;gap:4px;min-inline-size:0;font-weight:500;}.detail-heading :global(svg){flex-shrink:0;}
 .detail-body{display:flex;flex-direction:column;gap:4px;min-inline-size:0;margin-block-start:2px;}
-.detail-font{font-size:10px;color:#6a7961;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.detail-controls{display:flex;gap:4px;min-inline-size:0;}.detail-controls select{flex:1;inline-size:0;min-inline-size:0;height:22px;block-size:22px;padding:2px;font-size:9px;min-block-size:22px;}.detail-controls select:first-child{flex:0 0 56px;}
-.detail-image{block-size:72px;min-inline-size:0;border:1px solid #dfe6d7;border-radius:5px;}.detail-image>span{display:block;padding:4px;font-size:10px;color:#849078;}
+.detail-font{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.detail-controls{display:flex;gap:4px;min-inline-size:0;}.detail-controls select{flex:1;inline-size:0;min-inline-size:0;height:24px;block-size:24px;padding:2px;font-size:11px;min-block-size:24px;}.detail-controls select:first-child{flex:0 0 58px;}
+.detail-image{block-size:72px;min-inline-size:0;border:1px solid var(--border);border-radius:4px;}.detail-image>span{display:block;padding:4px;font-size:11px;color:var(--muted);}
 .field-error{margin:0;}
 .watermark-detail.collapsed{inline-size:28px;padding:2px;}.collapsed .detail-heading{justify-content:center;min-block-size:22px;}
 </style>

@@ -6,22 +6,29 @@ console.log({spaceId:task.spaceId});
 const page=task.page('p1');
 async function prepare(query='?long-font-list'){
  await page.goto('http://127.0.0.1:1420/tests/ui/app.html'+query);
- await page.waitForSelector('.frame-entry-row button:not([disabled])');
+ await page.cdp('Emulation.setDeviceMetricsOverride',{width:1180,height:800,deviceScaleFactor:1,mobile:false});
+ await page.waitForSelector('.quick-templates-heading button:not([disabled])');
  await page.selectOption('.language-select','en');
- await page.click('.watermark-section details.advanced-watermark > summary');
- await page.waitForSelector('.font-picker [role=option]');
+ await page.click('#inspector-watermark');
+ await page.waitForSelector('.font-picker [data-index="0"]');
+ await page.click('.position-details > summary');
+ assert.ok(await page.evaluate(()=>{const panel=document.querySelector('#watermark-panel');return panel.scrollHeight>panel.clientHeight+100;}),'Expanded position controls provide a real outer scroll region');
  if(query.includes('legacy-scroll'))await page.evaluate(()=>document.querySelector('.font-picker').style.overscrollBehavior='auto');
 }
 async function aim(edge){
  const pos=await page.evaluate(edge=>{
-  const list=document.querySelector('.font-picker'),panel=document.querySelector('.settings-panel');
-  list.scrollIntoView({block:'center'});list.scrollTop=edge==='bottom'?list.scrollHeight:0;
+  const list=document.querySelector('.font-picker'),panel=document.querySelector('#watermark-panel');
+  list.scrollIntoView({block:'center',behavior:'instant'});list.scrollTop=edge==='bottom'?list.scrollHeight:0;
   const r=list.getBoundingClientRect(),p=panel.getBoundingClientRect();
   return {x:r.x+r.width/2,y:r.y+r.height/2,outsideX:p.x+5,panelTop:panel.scrollTop,listTop:list.scrollTop,listMax:list.scrollHeight-list.clientHeight};
  },edge);
- await page.mouse.move(pos.x,pos.y,{label:'Scrolling inside font options'});return pos;
+ await page.mouse.move(pos.x,pos.y,{label:'Scrolling inside font options'});
+ // Let a preceding outer-wheel gesture finish before taking a new baseline.
+ // Otherwise a fractional compositor remainder can be mistaken for chaining.
+ const stable=await page.evaluate(()=>new Promise(resolve=>{let last=-1,same=0,frames=0;const frame=()=>{const panel=document.querySelector('#watermark-panel'),list=document.querySelector('.font-picker');const now=panel.scrollTop;same=now===last?same+1:0;last=now;if(same>=6||++frames>=60)resolve({panelTop:now,listTop:list.scrollTop});else requestAnimationFrame(frame);};requestAnimationFrame(frame);}));
+ return {...pos,...stable};
 }
-async function tops(){return page.evaluate(()=>({panel:document.querySelector('.settings-panel').scrollTop,list:document.querySelector('.font-picker').scrollTop}));}
+async function tops(){return page.evaluate(()=>({panel:document.querySelector('#watermark-panel').scrollTop,list:document.querySelector('.font-picker').scrollTop}));}
 async function wheel(delta){await page.mouse.wheel(0,delta);await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));}
 await prepare();
 console.log((await page.snapshot({scope:'full_page'})).slice(-1400));

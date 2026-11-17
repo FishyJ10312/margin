@@ -602,5 +602,19 @@
   "图像 API 未返回 Base64 PNG；请选择支持 GPT Image 格式的接口": "No Base64 PNG returned. Choose an endpoint supporting the GPT Image format.",
   "（当前选择，接口未列出）": " (current selection; not listed by endpoint)",
   "一轮精修只返回一套方案，先预览再应用": "One refinement returns one design. Preview it before applying.",
-  "每次只生成一张素材，参考照片默认不发送": "One artwork per request. The reference photo is not sent by default."
+  "每次只生成一张素材，参考照片默认不发送": "One artwork per request. The reference photo is not sent by default.",
+  "无法读取 PNG 颜色信息": "Could not read PNG color information",
+  "PNG 颜色信息无效或过大": "PNG color information is invalid or too large",
+  "这张 PNG 使用 HDR PQ/HLG，暂不能可靠转换；请先导出为 SDR JPG 或 PNG": "This PNG uses HDR PQ/HLG. Convert it to SDR JPG or PNG before adding a frame.",
+  "这张 PNG 的 cICP 颜色空间暂不支持，请先转换为 SDR sRGB": "This PNG color space is unsupported. Convert it to SDR sRGB first.",
+  "PNG Display P3 转换失败": "Could not convert PNG Display P3 colors",
+  "这张 PNG 的颜色曲线无效，请先转换为 SDR sRGB": "This PNG color curve is invalid. Convert it to SDR sRGB first.",
+  "PNG 颜色转换失败": "Could not convert PNG colors",
+  "上次的导出临时路径与任务不符，已保留文件。": "An incomplete export has an unexpected path. The file was preserved.",
+  "上次的导出临时文件类型异常，已保留文件。": "An incomplete export has an unexpected file type. The file was preserved.",
+  "无法清理上次未完成的导出临时文件": "Could not remove a recorded incomplete export",
+  "读取照片超时，请重新选择照片或稍后重试。": "Reading this photo timed out. Reselect the photo or try again.",
+  "已取消读取照片。": "Photo reading cancelled.",
+  "读取照片意外中断，请重新选择照片或重试。": "Photo reading was interrupted. Reselect the photo or try again.",
+  "读取期间照片已更改，请重新选择照片或重试。": "The photo changed while being read. Reselect the photo or try again."
 }

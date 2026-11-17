@@ -9,24 +9,29 @@ pub mod art_ai;
 pub mod art_direction;
 pub mod artwork;
 pub mod chatgpt_auth;
+#[cfg(unix)]
+mod chatgpt_file_vault;
 mod chatgpt_stream;
 mod chatgpt_vault;
 pub mod codex_image;
 pub mod decoration;
 pub mod designs;
-pub mod frame_art;
 pub mod film;
+pub mod frame_art;
 mod frame_opening;
 pub mod generated_art;
 pub mod image_api;
 pub mod imaging;
 mod jobs;
+mod catalog_history;
 pub mod layout;
 pub mod model;
+pub mod mcp;
 pub mod pi_bridge;
 mod refinement;
 pub mod stickers;
 mod storage;
+pub mod source_io;
 
 use app_models::{AppSnapshot, BatchSnapshot, ImportResult, Preset};
 use jobs::{Backend, ProgressSink};
@@ -62,6 +67,30 @@ async fn get_state(state: BackendState<'_>) -> Result<AppSnapshot, String> {
 }
 
 #[tauri::command]
+async fn get_agent_status(state: State<'_, Arc<mcp::AgentService>>) -> Result<mcp::AgentStatus, String> { Ok(state.status().await) }
+
+#[tauri::command]
+async fn set_agent_access(enabled: bool, allow_writes: bool, state: State<'_, Arc<mcp::AgentService>>) -> Result<mcp::AgentStatus, String> {
+    state.inner().set_access(enabled, allow_writes).await
+}
+
+#[tauri::command]
+fn complete_agent_command(request_id: String, result: Option<serde_json::Value>, error: Option<String>, state: State<'_, Arc<mcp::AgentService>>) -> Result<(), String> {
+    state.complete(request_id, result, error)
+}
+
+#[tauri::command]
+fn agent_window_ready(ready: bool, state: State<'_, Arc<mcp::AgentService>>) { state.mark_ready(ready); }
+
+#[tauri::command]
+async fn get_frame_template_previews(
+    state: BackendState<'_>,
+) -> Result<std::collections::HashMap<String, String>, String> {
+    let backend = state.inner().clone();
+    blocking(move || backend.frame_template_previews()).await
+}
+
+#[tauri::command]
 async fn import_photos(
     paths: Vec<String>,
     state: BackendState<'_>,
@@ -71,9 +100,27 @@ async fn import_photos(
 }
 
 #[tauri::command]
-async fn remove_photos(ids: Vec<String>, state: BackendState<'_>) -> Result<(), String> {
+async fn remove_photos(ids: Vec<String>, selection: Option<app_models::PhotoSelection>, state: BackendState<'_>) -> Result<Option<app_models::PhotoRemovalReceipt>, String> {
     let backend = state.inner().clone();
-    blocking(move || backend.remove_photos(ids)).await
+    blocking(move || backend.remove_photos_with_selection(ids, selection)).await
+}
+
+#[tauri::command]
+async fn undo_photo_removal(undo_id: String, state: BackendState<'_>) -> Result<app_models::RestoredPhotos, String> {
+    let backend = state.inner().clone();
+    blocking(move || backend.undo_photo_removal(undo_id)).await
+}
+
+#[tauri::command]
+async fn redo_photo_removal(redo_id: String, selection: Option<app_models::PhotoSelection>, state: BackendState<'_>) -> Result<app_models::PhotoRemovalReceipt, String> {
+    let backend = state.inner().clone();
+    blocking(move || backend.redo_photo_removal_with_selection(redo_id, selection)).await
+}
+
+#[tauri::command]
+async fn save_photo_selection(selection: app_models::PhotoSelection, catalog_revision: u64, state: BackendState<'_>) -> Result<bool, String> {
+    let backend = state.inner().clone();
+    blocking(move || backend.save_photo_selection(selection, catalog_revision)).await
 }
 
 #[tauri::command]
@@ -225,14 +272,24 @@ async fn chatgpt_sign_in(
     consent: bool,
     state: State<'_, Arc<art_ai::ArtAi>>,
 ) -> Result<chatgpt_auth::ConnectionState, String> {
-    state
+    let opener = app.clone();
+    let result = state
         .chatgpt
         .sign_in(account_id, consent, move |url| {
-            app.opener()
+            opener
+                .opener()
                 .open_url(url, None::<&str>)
                 .map_err(|_| "无法打开官方登录页面，请检查默认浏览器".into())
         })
-        .await
+        .await;
+    if result.is_ok() {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.unminimize();
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+    }
+    result
 }
 #[tauri::command]
 fn cancel_chatgpt_sign_in(state: State<'_, Arc<art_ai::ArtAi>>) {
@@ -473,12 +530,23 @@ pub fn run() {
         .setup(|app| {
             let directory = app.path().app_data_dir()?;
             app.manage(Arc::new(art_ai::ArtAi::new(directory.clone())));
-            let backend = Backend::new(directory).map_err(std::io::Error::other)?;
+            let backend = Backend::new(directory.clone()).map_err(std::io::Error::other)?;
             app.manage(backend);
+            let agent = mcp::AgentService::new(directory, std::env::current_exe()?);
+            let agent_app = app.handle().clone();
+            agent.set_dispatcher(Arc::new(move |command| agent_app.emit_to("main", "agent-command", command).map_err(|_| "无法连接 Margin 窗口".into())));
+            app.manage(agent.clone());
+            let startup_app = app.handle().clone();
+            tauri::async_runtime::spawn(async move { if let Err(error) = agent.start_saved().await { let _ = startup_app.emit("agent-status-error", error); } });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             get_state,
+            get_agent_status,
+            set_agent_access,
+            complete_agent_command,
+            agent_window_ready,
+            get_frame_template_previews,
             get_ai_state,
             get_chatgpt_state,
             get_pi_runtime,
@@ -506,6 +574,9 @@ pub fn run() {
             cancel_art_frames,
             import_photos,
             remove_photos,
+            undo_photo_removal,
+            redo_photo_removal,
+            save_photo_selection,
             get_preview,
             list_fonts,
             sample_color,
@@ -524,5 +595,5 @@ pub fn run() {
             resume_batch,
         ])
         .run(tauri::generate_context!())
-        .expect("无法启动留白");
+        .expect("Unable to start Margin");
 }

@@ -24,6 +24,7 @@ fn save<T: serde::Serialize>(path: &Path, value: &T) -> Result<(), String> {
     fs::write(path, serde_json::to_vec_pretty(value).unwrap()).map_err(|e| e.to_string())
 }
 fn main() -> Result<(), String> {
+    if liubai_lib::source_io::worker_entry_if_requested() { return Ok(()); }
     let args: Vec<_> = std::env::args().collect();
     if args.get(1).map(String::as_str) != Some("--live") {
         return Err(

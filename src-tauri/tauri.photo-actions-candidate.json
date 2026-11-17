@@ -1,0 +1,11 @@
+{
+  "productName": "Margin Photo Actions",
+  "identifier": "com.fishyj.margin.qa.photoactions20261117",
+  "app": {
+    "windows": [{
+      "label": "main", "title": "Margin · Photo Actions",
+      "width": 1180, "height": 800, "minWidth": 900, "minHeight": 650,
+      "center": true, "backgroundColor": "#fbfcfa", "dragDropEnabled": true
+    }]
+  }
+}

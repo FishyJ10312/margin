@@ -1,4 +1,5 @@
 use super::*;
+use crate::chatgpt_vault::SystemVault;
 use jsonwebtoken::{encode, EncodingKey, Header};
 use std::{
     io::{Read, Write},
@@ -246,7 +247,7 @@ async fn login(auth: &ChatGpt, tag: &str, plan: bool) -> ConnectionState {
         let url = reqwest::Url::parse(&raw).unwrap();
         let q = url.query_pairs().into_owned().collect::<HashMap<_, _>>();
         assert_eq!(q["client_id"], "dynamic_agent_client");
-        assert_eq!(q["agent_name_hint"], "Liubai");
+        assert_eq!(q["agent_name_hint"], "Margin");
         assert_eq!(q["code_challenge_method"], "S256");
         assert!(q["ext_agent_host_id"].starts_with("urn:uuid:"));
         let mut callback = reqwest::Url::parse(&q["redirect_uri"]).unwrap();
@@ -475,11 +476,104 @@ async fn stalled_system_vault_returns_a_bounded_error_and_does_not_stack_reads()
     assert!(result.unwrap().err().unwrap().contains("超时"));
     let repeated = tokio::time::timeout(Duration::from_millis(100), auth.vault_get(&id)).await;
     vault.release();
-    assert!(repeated.unwrap().err().unwrap().contains("仍在等待"));
+    assert!(repeated.unwrap().err().unwrap().contains("正在读取"));
     assert_eq!(
         vault.reads.load(Ordering::Relaxed),
         1,
         "Timed-out reads must not accumulate threads"
+    );
+}
+
+#[tokio::test]
+async fn missing_saved_credential_must_not_keep_showing_connected() {
+    let server = Server::new();
+    let directory = tempfile::tempdir().unwrap();
+    let auth = server.auth(directory.path().into(), Arc::new(MemoryVault::default()));
+    let id = login(&auth, "a", true).await.active_id.unwrap();
+    auth.credentials.lock().unwrap().clear();
+    auth.vault.remove(&id).unwrap();
+    assert!(auth.models(&id).await.is_err());
+    assert!(
+        !auth.state().unwrap().accounts[0].connected,
+        "A saved account with unreadable authorization must not be shown as connected"
+    );
+    assert!(server
+        .data
+        .requests
+        .lock()
+        .unwrap()
+        .iter()
+        .all(|r| r.path != "/models"));
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn native_login_survives_relaunch_without_a_system_keychain_or_external_runtime() {
+    let server = Server::new();
+    let directory = tempfile::tempdir().unwrap();
+    let endpoints = server
+        .auth(directory.path().into(), Arc::new(MemoryVault::default()))
+        .endpoints;
+    let mut first = ChatGpt::new(directory.path().into());
+    first.endpoints = endpoints.clone();
+    let id = login(&first, "a", true).await.active_id.unwrap();
+    assert_eq!(
+        serde_json::to_value(&first.state().unwrap()).unwrap()["accounts"][0]["status"],
+        "saved"
+    );
+    first.models(&id).await.unwrap();
+    assert_eq!(
+        serde_json::to_value(&first.state().unwrap()).unwrap()["accounts"][0]["status"],
+        "connected"
+    );
+    drop(first);
+    let mut reopened = ChatGpt::new(directory.path().into());
+    reopened.endpoints = endpoints;
+    assert_eq!(
+        serde_json::to_value(&reopened.state().unwrap()).unwrap()["accounts"][0]["status"],
+        "saved"
+    );
+    assert_eq!(reopened.models(&id).await.unwrap()[0].slug, "test-vision-a");
+    let public = serde_json::to_string(&reopened.state().unwrap()).unwrap();
+    assert!(!public.contains("access-a") && !public.contains("refresh-a"));
+    reopened.disconnect(&id).await.unwrap();
+    assert!(!directory
+        .path()
+        .join("credentials")
+        .join(format!("{id}.json"))
+        .exists());
+}
+
+#[tokio::test]
+async fn a_failed_model_check_drops_verified_status_but_network_outage_keeps_credentials() {
+    let server = Server::new();
+    let directory = tempfile::tempdir().unwrap();
+    let vault = Arc::new(MemoryVault::default());
+    let auth = server.auth(directory.path().into(), vault.clone());
+    let id = login(&auth, "a", true).await.active_id.unwrap();
+    auth.models(&id).await.unwrap();
+    assert_eq!(
+        serde_json::to_value(&auth.state().unwrap()).unwrap()["accounts"][0]["status"],
+        "connected"
+    );
+    server
+        .data
+        .models_unavailable
+        .store(true, Ordering::Relaxed);
+    assert!(auth.models(&id).await.is_err());
+    assert_eq!(
+        serde_json::to_value(&auth.state().unwrap()).unwrap()["accounts"][0]["status"],
+        "unavailable"
+    );
+    assert!(vault.get(&id).unwrap().is_some());
+    server
+        .data
+        .models_unavailable
+        .store(false, Ordering::Relaxed);
+    auth.models(&id).await.unwrap();
+    assert_eq!(
+        serde_json::to_value(&auth.state().unwrap()).unwrap()["accounts"][0]["status"],
+        "connected"
     );
 }
 

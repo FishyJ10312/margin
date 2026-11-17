@@ -1,7 +1,7 @@
 //! Official Sign in with ChatGPT public-client flow. No Codex-token extraction.
 use crate::{
     chatgpt_stream::{self, ResponseStream},
-    chatgpt_vault::{SystemVault, Vault},
+    chatgpt_vault::Vault,
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use jsonwebtoken::{decode, decode_header, jwk::JwkSet, Algorithm, DecodingKey, Validation};
@@ -116,6 +116,16 @@ pub struct Account {
     pub label: String,
     pub connected: bool,
     pub plan_enabled: bool,
+    pub status: ConnectionStatus,
+}
+#[derive(Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ConnectionStatus {
+    Saved,
+    Connected,
+    Reconnect,
+    Unavailable,
+    SignedOut,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -214,11 +224,18 @@ pub struct ChatGpt {
     credentials: Arc<Mutex<HashMap<String, Credential>>>,
     catalogs: Arc<Mutex<HashMap<String, (Instant, Vec<Model>)>>>,
     diagnostic: Arc<Mutex<Option<Diagnostic>>>,
+    health: Arc<Mutex<HashMap<String, ConnectionStatus>>>,
     endpoints: Endpoints,
 }
 impl ChatGpt {
     pub fn new(directory: PathBuf) -> Self {
-        Self::with_vault(directory, Arc::new(SystemVault), Endpoints::default())
+        #[cfg(unix)]
+        let vault: Arc<dyn Vault> = Arc::new(crate::chatgpt_file_vault::FileVault::new(
+            directory.join("credentials"),
+        ));
+        #[cfg(not(unix))]
+        let vault: Arc<dyn Vault> = Arc::new(crate::chatgpt_vault::SystemVault);
+        Self::with_vault(directory, vault, Endpoints::default())
     }
     fn with_vault(directory: PathBuf, vault: Arc<dyn Vault>, endpoints: Endpoints) -> Self {
         let file = directory.join("accounts.json");
@@ -266,6 +283,7 @@ impl ChatGpt {
             credentials: Arc::new(Mutex::new(HashMap::new())),
             catalogs: Arc::new(Mutex::new(HashMap::new())),
             diagnostic: Arc::new(Mutex::new(None)),
+            health: Arc::new(Mutex::new(HashMap::new())),
             endpoints,
         }
     }
@@ -313,21 +331,33 @@ impl ChatGpt {
     }
     pub fn state(&self) -> Result<ConnectionState, String> {
         let d = self.database()?;
+        let health = self.health.lock().map_err(|_| LOCK_ERROR)?;
         Ok(ConnectionState {
             active_id: d.active_id,
             diagnostic: self.diagnostic.lock().map_err(|_| LOCK_ERROR)?.clone(),
             accounts: d
                 .accounts
                 .iter()
-                .map(|a| Account {
-                    id: a.id.clone(),
-                    label: if a.label.is_empty() {
-                        "待完成授权".into()
+                .map(|a| {
+                    let status = if !a.connected {
+                        ConnectionStatus::SignedOut
                     } else {
-                        a.label.clone()
-                    },
-                    connected: a.connected,
-                    plan_enabled: a.plan_enabled,
+                        health
+                            .get(&a.id)
+                            .copied()
+                            .unwrap_or(ConnectionStatus::Saved)
+                    };
+                    Account {
+                        id: a.id.clone(),
+                        label: if a.label.is_empty() {
+                            "待完成授权".into()
+                        } else {
+                            a.label.clone()
+                        },
+                        connected: a.connected && status != ConnectionStatus::Reconnect,
+                        plan_enabled: a.plan_enabled,
+                        status,
+                    }
                 })
                 .collect(),
         })
@@ -357,6 +387,17 @@ impl ChatGpt {
             .ok_or_else(|| "请选择已保存的 ChatGPT 账户".into())
     }
     async fn vault_get(&self, id: &str) -> Result<Credential, String> {
+        let result = self.read_credential(id).await;
+        if result.is_err() {
+            self.health
+                .lock()
+                .map_err(|_| LOCK_ERROR)?
+                .insert(id.into(), ConnectionStatus::Reconnect);
+            self.catalogs.lock().map_err(|_| LOCK_ERROR)?.remove(id);
+        }
+        result
+    }
+    async fn read_credential(&self, id: &str) -> Result<Credential, String> {
         if let Some(c) = self
             .credentials
             .lock()
@@ -370,7 +411,7 @@ impl ChatGpt {
         let key = id.to_owned();
         self.vault_reading
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .map_err(|_| "系统凭据库仍在等待响应，请先处理系统授权窗口后重试")?;
+            .map_err(|_| "登录授权正在读取，请稍后重试")?;
         let permit = VaultReadGuard(self.vault_reading.clone());
         let operation = tokio::task::spawn_blocking(move || {
             let _permit = permit;
@@ -378,7 +419,7 @@ impl ChatGpt {
         });
         let secret = tokio::time::timeout(self.vault_read_timeout, operation)
             .await
-            .map_err(|_| "读取系统凭据库超时，请先处理系统授权窗口，再到模型配置中重试或重新登录")?
+            .map_err(|_| "读取登录授权超时，请点击重新连接 ChatGPT")?
             .map_err(|_| LOCK_ERROR)??
             .ok_or(RELOGIN)?;
         let c: Credential = serde_json::from_str(&secret).map_err(|_| RELOGIN)?;
@@ -387,6 +428,7 @@ impl ChatGpt {
             || a.subject.as_deref() != Some(&c.subject)
             || !token_valid(&c.access_token)
             || !token_valid(&c.id_token)
+            || (!c.refresh_token.is_empty() && !token_valid(&c.refresh_token))
             || c.scopes.len() > 32
         {
             return Err(RELOGIN.into());
@@ -413,6 +455,7 @@ impl ChatGpt {
     async fn clear_credentials(&self, id: &str) -> Result<(), String> {
         self.credentials.lock().map_err(|_| LOCK_ERROR)?.remove(id);
         self.catalogs.lock().map_err(|_| LOCK_ERROR)?.remove(id);
+        self.health.lock().map_err(|_| LOCK_ERROR)?.remove(id);
         self.update(|d| {
             if let Some(a) = d.accounts.iter_mut().find(|a| a.id == id) {
                 a.connected = false;
@@ -429,6 +472,7 @@ impl ChatGpt {
     }
     fn client(&self, seconds: u64) -> Result<reqwest::Client, String> {
         reqwest::Client::builder()
+            .retry(reqwest::retry::never())
             .connect_timeout(Duration::from_secs(8))
             .timeout(Duration::from_secs(seconds))
             .redirect(reqwest::redirect::Policy::none())
@@ -494,7 +538,7 @@ impl ChatGpt {
                 .into(),
             });
             if status.is_success() {
-                return Err("ChatGPT 连接返回了网页或非模型内容，请在模型配置中检查连接；也可选择已登录的 Pi / OpenAI 订阅入口".into());
+                return Err("ChatGPT 连接返回了网页或非模型内容，请检查网络后重试连接".into());
             }
             if matches!(
                 code,
@@ -624,7 +668,7 @@ impl ChatGpt {
             .append_pair("code_challenge_method", "S256")
             .append_pair("code_challenge", &challenge(&verifier));
             if previous.is_none() {
-                q.append_pair("agent_name_hint", "Liubai");
+                q.append_pair("agent_name_hint", "Margin");
             }
             if consent {
                 q.append_pair("prompt", "consent");
@@ -697,6 +741,11 @@ impl ChatGpt {
             Ok(())
         })?;
         self.vault_set(&id, &c).await?;
+        self.catalogs.lock().map_err(|_| LOCK_ERROR)?.remove(&id);
+        self.health
+            .lock()
+            .map_err(|_| LOCK_ERROR)?
+            .insert(id.clone(), ConnectionStatus::Saved);
         self.update(|d| {
             let a = d
                 .accounts
@@ -786,6 +835,30 @@ impl ChatGpt {
         .map_err(|_| LOCK_ERROR)?
     }
     pub async fn models(&self, id: &str) -> Result<Vec<Model>, String> {
+        *self.diagnostic.lock().map_err(|_| LOCK_ERROR)? = None;
+        let result = self.read_models(id).await;
+        let mut health = self.health.lock().map_err(|_| LOCK_ERROR)?;
+        if result.is_ok() {
+            health.insert(id.into(), ConnectionStatus::Connected);
+        } else if health.get(id) != Some(&ConnectionStatus::Reconnect) {
+            let revoked = self
+                .diagnostic
+                .lock()
+                .map_err(|_| LOCK_ERROR)?
+                .as_ref()
+                .is_some_and(|d| d.status == 401);
+            health.insert(
+                id.into(),
+                if revoked {
+                    ConnectionStatus::Reconnect
+                } else {
+                    ConnectionStatus::Unavailable
+                },
+            );
+        }
+        result
+    }
+    async fn read_models(&self, id: &str) -> Result<Vec<Model>, String> {
         let access = self.authorized_access(id).await?;
         let r = self
             .client(20)?
@@ -1083,8 +1156,13 @@ fn parse_models(v: &Value) -> Result<Vec<Model>, String> {
     Ok(models)
 }
 async fn html(socket: &mut TcpStream, status: &str, message: &str) {
-    let body=format!("<!doctype html><html lang=\"zh-CN\"><meta charset=\"utf-8\"><meta name=\"referrer\" content=\"no-referrer\"><title>Liubai</title><body><h1>Liubai · 留白</h1><p>{message}</p><p lang=\"en\">Return to Liubai to see the connection result.</p></body></html>");
-    let response=format!("HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nContent-Security-Policy: default-src 'none'; frame-ancestors 'none'\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}",body.len());
+    let nonce = uuid::Uuid::new_v4().simple().to_string();
+    // Replace the callback URL immediately, so a consumed authorization code
+    // does not remain in the address bar, screenshots or browser history.
+    let body = format!(
+        r##"<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Margin</title><script nonce="{nonce}">history.replaceState(null,'','/auth/callback');</script><style nonce="{nonce}">body{{font:16px/1.8 system-ui,sans-serif;background:#fbfcfa;color:#252b28;margin:12vh auto;padding:24px;max-width:560px}}h1{{font-size:32px;font-weight:500;letter-spacing:-1px}}p{{color:#657068}}</style></head><body><h1>Margin</h1><p>{message}</p><p lang="en">Return to Margin to see the connection result. You may close this tab.</p></body></html>"##
+    );
+    let response=format!("HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nContent-Security-Policy: default-src 'none'; script-src 'nonce-{nonce}'; style-src 'nonce-{nonce}'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}",body.len());
     let _ = socket.write_all(response.as_bytes()).await;
     let _ = socket.shutdown().await;
 }
@@ -1138,7 +1216,7 @@ async fn receive_callback(
             html(
                 &mut socket,
                 "404 Not Found",
-                "此地址仅用于留白的本机登录回调。",
+                "此地址仅用于 Margin 的本机登录回调。",
             )
             .await;
             continue;
@@ -1160,13 +1238,13 @@ async fn receive_callback(
             html(
                 &mut socket,
                 "400 Bad Request",
-                "登录校验未通过，请返回留白重新连接。",
+                "登录校验未通过，请返回 Margin 重新连接。",
             )
             .await;
             continue;
         }
         if field("error").is_some() {
-            html(&mut socket, "200 OK", "你已取消授权。请返回留白。").await;
+            html(&mut socket, "200 OK", "你已取消授权。请返回 Margin。").await;
             return Err("ChatGPT 授权未完成，未发送任何照片".into());
         }
         let code = field("code")
@@ -1182,7 +1260,12 @@ async fn receive_callback(
             .or_else(|| expected_client.map(str::to_owned))
             .filter(|s| identifier(s) && s != "dynamic_agent_client")
             .ok_or("ChatGPT 注册尚未完成，请重新连接")?;
-        html(&mut socket,"200 OK","已收到授权回调。请返回留白查看身份验证与连接结果。 / Return to Liubai to finish connecting.").await;
+        html(
+            &mut socket,
+            "200 OK",
+            "已收到授权回调，请返回 Margin 查看连接结果。",
+        )
+        .await;
         return Ok((code, client));
     }
 }

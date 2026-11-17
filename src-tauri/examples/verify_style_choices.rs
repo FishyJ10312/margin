@@ -12,6 +12,7 @@ struct Photo {
     path: String,
 }
 fn main() -> Result<(), String> {
+    if liubai_lib::source_io::worker_entry_if_requested() { return Ok(()); }
     let args: Vec<_> = std::env::args().collect();
     if args.get(1).map(String::as_str) == Some("--inspect-frame") {
         let check = liubai_lib::frame_art::validate_generated(args.get(2).ok_or("asset")?);

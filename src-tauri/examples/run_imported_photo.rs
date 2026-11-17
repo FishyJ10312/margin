@@ -82,6 +82,7 @@ fn demo(base: &RenderSettings) -> RenderSettings {
     s
 }
 fn main() -> Result<(), String> {
+    if liubai_lib::source_io::worker_entry_if_requested() { return Ok(()); }
     let args: Vec<String> = std::env::args().collect();
     if !args.iter().any(|s| s == "--live") {
         return Err("Explicit --live required: sends the imported photo thumbnail to the saved OpenAI subscription".into());

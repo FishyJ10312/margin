@@ -1,0 +1,19 @@
+{
+  "productName": "Margin Candidate",
+  "identifier": "com.fishyj.margin.qa.candidate20261117",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Margin \u00b7 Local Candidate",
+        "width": 1180,
+        "height": 800,
+        "minWidth": 900,
+        "minHeight": 650,
+        "center": true,
+        "backgroundColor": "#fbfcfa",
+        "dragDropEnabled": true
+      }
+    ]
+  }
+}

@@ -35,9 +35,9 @@
  {#each options as font,i}<button type="button" tabindex="-1" id={`font-choice-${i}`} data-index={i} role="option" aria-selected={index===i} class:chosen={index===i} on:click={()=>{list.focus();void pick(i);}}><span>{$t(displayName(font))}{#if font.bundled}<small>{$t("内置")}</small>{/if}</span>{#if index===i}<span aria-hidden="true">✓</span>{/if}</button>{/each}
  {#if !options.length}<p class="field-help">{$t("没有匹配的字体")}</p>{/if}
 </div>
-<p class="field-help">{$t("选中后按 ↑ ↓ 切换，水印细节同步预览")}</p>
+<p class="field-help">{$t('↑ ↓ 浏览字体，水印实时同步')}</p>
 <style>
-.font-picker{height:158px;overflow:auto;overscroll-behavior:contain;border:1px solid #d8dfd2;border-radius:7px;margin-top:7px;background:#fbfcf9;outline-offset:2px;scrollbar-width:thin;}
-[role=option]{width:100%;text-align:left;border:0;background:transparent;display:flex;justify-content:space-between;gap:6px;padding:8px 10px;font-size:12px;cursor:pointer;color:#53604b;min-height:34px;}[role=option] small{display:inline-block;margin-left:6px;color:#90a081;font-size:9px;}
-[role=option]:hover{background:#eff3e9;}.chosen{background:#e4ecdc;color:#3e5931;font-weight:550;}.font-filters{display:flex;gap:5px;margin:8px 0;}.font-filters button{border:1px solid #d5dfcc;border-radius:5px;padding:4px 8px;font-size:11px;min-height:26px;color:#65775b;}
+.font-picker{height:128px;overflow:auto;overscroll-behavior:contain;border:1px solid var(--border);border-radius:6px;margin-top:8px;background:var(--surface);outline-offset:2px;scrollbar-width:thin;scrollbar-gutter:stable;}
+[role=option]{width:100%;text-align:left;border:0;background:transparent;display:flex;justify-content:space-between;gap:6px;padding:8px 10px;font-size:12px;cursor:pointer;color:var(--ink);min-height:34px;}[role=option] span:first-child{min-width:0;overflow-wrap:anywhere;}[role=option] small{display:inline-block;margin-left:6px;color:var(--muted);font-size:11px;}
+[role=option]:hover{background:var(--surface-soft);}.chosen{background:#e8eee7;color:var(--green);font-weight:500;}.font-filters{display:flex;gap:6px;margin:8px 0;}.font-filters button{border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:11px;min-height:28px;color:var(--muted);background:var(--surface);}.font-filters button.chosen{background:#e8eee7;color:var(--green);border-color:var(--green);}
 </style>

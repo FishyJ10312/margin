@@ -6,6 +6,7 @@ use liubai_lib::{
 };
 use std::{fs, path::PathBuf};
 fn main() -> Result<(), String> {
+    if liubai_lib::source_io::worker_entry_if_requested() { return Ok(()); }
     let args: Vec<_> = std::env::args().collect();
     let dir = PathBuf::from(args.get(1).ok_or("output path")?);
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;

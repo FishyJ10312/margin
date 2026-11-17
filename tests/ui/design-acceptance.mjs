@@ -7,9 +7,9 @@ const page=task.page('p1');
 const modelCalls=()=>page.evaluate(()=>window.__qa.requests.filter(r=>/^generate_/.test(r.cmd)));
 async function openAI(query=''){
  await page.goto('http://127.0.0.1:1420/tests/ui/app.html'+query);
- await page.waitForSelector('.frame-entry-row button:not([disabled])');
+ await page.waitForSelector('.quick-templates-heading button:not([disabled])');
  await page.selectOption('select.language-select','en');
- await page.click("loc=role:button[name='AI design']");
+ await page.click('.art-trigger');
  await page.waitForSelector('#style-direction',{state:'visible'});
 }
 await openAI('?legacy-style');
@@ -71,8 +71,8 @@ assert.equal((await modelCalls())[0].cmd,'generate_art_frames');
 console.log('PASS: existing ChatGPT analysis connection is checked with no duplicate login editor.');
 
 await page.goto('http://127.0.0.1:1420/tests/ui/app.html');
-await page.waitForSelector('.frame-entry-row button:not([disabled])');
-await page.click("loc=role:button[name='Frame templates']");
+await page.waitForSelector('.quick-templates-heading button:not([disabled])');
+await page.click('.quick-templates-heading button');
 await page.waitForSelector('.style-card');
 await page.click("loc=role:button[name='Film']");
 await page.waitForFunction(()=>document.querySelectorAll('.style-card').length===12&&!document.querySelector('.style-preview [aria-busy=true]'));
@@ -88,7 +88,7 @@ assert.equal(await page.evaluate(()=>[...document.querySelectorAll('.settings-pa
 console.log('PASS: twelve local film templates apply without a model call; details remain optional.');
 
 await page.goto('http://127.0.0.1:1420/tests/ui/app.html?refine');
-await page.waitForSelector('.frame-entry-row button:not([disabled])');
+await page.waitForSelector('.quick-templates-heading button:not([disabled])');
 await page.click("loc=role:button[name='Refine once']");
 await page.waitForSelector('#style-direction',{state:'visible'});
 await page.click('.model-dialog form > fieldset > .model-consent input');
@@ -99,7 +99,7 @@ assert.equal(await page.evaluate(()=>document.querySelectorAll('.art-suggestions
 console.log('PASS: existing generated artwork retains its contextual refinement flow.');
 await page.click("loc=role:button[name='Close AI design']");
 await page.selectOption('select.language-select','zh-CN');
-await page.click("loc=role:button[name='AI 设计']");
+await page.click('.art-trigger');
 await page.waitForSelector('#style-direction',{state:'visible'});
 assert.equal(await page.evaluate(()=>document.querySelector('#art-title').textContent),'AI 设计');
 assert.equal(await page.evaluate(()=>document.querySelector('label[for=style-direction]').textContent),'你的想法（可选）');

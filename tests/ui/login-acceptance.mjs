@@ -1,0 +1,114 @@
+// Fixture-only browser checks. No real credentials, model requests or photo uploads.
+import assert from 'node:assert/strict';
+const task=await taskSpace('Margin native ChatGPT login 0.11'),page=task.page('p1');
+console.log({spaceId:task.spaceId});
+const callCount=cmd=>page.evaluate(cmd=>window.__qa.requests.filter(r=>r.cmd===cmd).length,cmd);
+async function start(query='',scenario='success'){
+ await page.goto('http://127.0.0.1:1420/tests/ui/app.html'+query);
+ await page.waitForSelector('.model-config-trigger:not([disabled])');
+ await page.selectOption('#interface-language','en');
+ await page.evaluate(s=>window.__qa.authControl.scenario=s,scenario);
+ await page.click('.model-config-trigger');
+ await page.waitForFunction(()=>!!document.querySelector('.chatgpt-connection')&&document.querySelector('.chatgpt-connection').getAttribute('aria-busy')==='false');
+}
+const verified=()=>page.evaluate(()=>!!document.querySelector('.connection-status.verified'));
+const savedDisabled=()=>page.evaluate(()=>document.querySelector('button[form="model-config-form"]').disabled);
+await start();
+assert.deepEqual(await page.evaluate(()=>[...document.querySelectorAll('.models-config nav>button strong')].map(b=>b.textContent)),['ChatGPT','Image generation']);
+assert.equal(await page.evaluate(()=>document.querySelector('.other-connections').open),false);
+assert.equal(await callCount('get_pi_runtime'),0);
+assert.equal(await callCount('list_pi_models'),0);
+assert.equal(await savedDisabled(),true);
+await page.click('.chatgpt-signin');
+await page.waitForSelector('.connection-status.verified');
+assert.equal(await savedDisabled(),false);
+await page.click('button[form="model-config-form"]');
+await page.waitForSelector('.settings-notice');
+assert.equal(await page.evaluate(()=>window.__qa.aiConfig.provider),'chatgpt');
+assert.equal(await page.evaluate(()=>window.__qa.aiConfig.model),'mock-vision-balanced');
+assert.equal(await callCount('get_pi_runtime'),0);
+assert.equal(await page.evaluate(()=>window.__qa.requests.filter(r=>/^generate_/.test(r.cmd)).length),0);
+console.log('PASS: one default ChatGPT entry; login, catalog and save need no Pi/Node or generation.');
+
+await start('?connected-chatgpt','vault-failure');
+assert.equal(await verified(),false);
+assert.equal(await savedDisabled(),true);
+assert.equal(await page.evaluate(()=>document.querySelector('.chatgpt-signin').textContent),'Reconnect ChatGPT');
+assert.equal(await page.evaluate(()=>document.querySelector('.chatgpt-connection .field-error').textContent.includes('local authorization')),true);
+await page.evaluate(()=>window.__qa.authControl.scenario='success');
+await page.click('.chatgpt-signin');
+await page.waitForSelector('.connection-status.verified');
+assert.equal(await savedDisabled(),false);
+console.log('PASS: unreadable authorization never looks connected; reconnect recovers it.');
+
+await page.evaluate(()=>window.__qa.authControl.scenario='models-outage');
+await page.click("loc=role:button[name='Refresh models']");
+await page.waitForFunction(()=>!!document.querySelector('.chatgpt-connection .field-error'));
+assert.equal(await verified(),false);
+assert.equal(await savedDisabled(),true);
+assert.equal(await page.evaluate(()=>document.querySelectorAll('.chatgpt-signin').length),0);
+const logins=await callCount('chatgpt_sign_in');
+await page.evaluate(()=>window.__qa.authControl.scenario='success');
+await page.click("loc=role:button[name='Retry connection']");
+await page.waitForSelector('.connection-status.verified');
+assert.equal(await callCount('chatgpt_sign_in'),logins);
+console.log('PASS: an outage clears the verified badge, keeps authorization and retries without logging in.');
+
+await page.evaluate(()=>window.__qa.authControl.modelsDelay=1500);
+await page.click("loc=role:button[name='Refresh models']");
+assert.equal(await verified(),false);
+assert.equal(await savedDisabled(),true);
+await page.waitForSelector('.connection-status.verified');
+assert.equal(await savedDisabled(),false);
+console.log('PASS: checking is distinct from connected; save stays disabled until verification completes.');
+
+await start('','cancel');
+await page.click('.chatgpt-signin');
+await page.waitForSelector('.chatgpt-connection [role="status"]');
+await page.click("loc=role:button[name='Cancel sign-in']");
+await page.waitForSelector('.chatgpt-signin:not([disabled])');
+assert.equal(await verified(),false);
+assert.equal(await page.evaluate(()=>window.__qa.chatgptState.accounts.length),0);
+assert.equal(await savedDisabled(),true);
+await page.click('.chatgpt-signin');
+await page.click("loc=role:button[name='Close model configuration']");
+await page.waitForSelector('.models-config',{state:'hidden'});
+await page.waitForFunction(()=>window.__qa.requests.filter(r=>r.cmd==='cancel_chatgpt_sign_in').length===2);
+assert.equal(await callCount('cancel_chatgpt_sign_in'),2);
+console.log('PASS: explicit cancel and closing the dialog both cancel pending sign-in.');
+
+await start('','identity-only');
+await page.click('.chatgpt-signin');
+await page.waitForFunction(()=>document.querySelector('.chatgpt-connection')?.getAttribute('aria-busy')==='false');
+assert.equal(await verified(),false);
+assert.equal(await savedDisabled(),true);
+assert.equal(await callCount('list_chatgpt_models'),0);
+assert.equal(await page.evaluate(()=>document.querySelector('.chatgpt-signin').textContent),'Enable ChatGPT plan usage');
+console.log('PASS: identity-only sign-in is not mistaken for model authorization.');
+
+await start('?connected-chatgpt');
+await page.click('.account-management > summary');
+await page.click("loc=role:button[name='Add another account']");
+await page.waitForSelector('.connection-status.verified');
+assert.equal(await page.evaluate(()=>document.querySelector('#chatgpt-account').options.length),2);
+await page.selectOption('#chatgpt-account','fixture-account');
+await page.waitForSelector('.connection-status.verified');
+assert.equal(await page.evaluate(()=>window.__qa.requests.filter(r=>r.cmd==='list_chatgpt_models').at(-1).args.accountId),'fixture-account');
+console.log('PASS: switching accounts verifies the newly selected account instead of reusing a previous badge.');
+
+await page.click("loc=role:button[name='Close model configuration']");
+await page.selectOption('#interface-language','zh-CN');
+await page.click('.model-config-trigger');
+await page.waitForSelector('.connection-status.verified');
+assert.equal(await page.evaluate(()=>document.querySelector('.connection-status.verified').textContent.trim()),'已连接 · 可用模型已验证');
+assert.equal(await page.evaluate(()=>document.querySelector('.other-connections > summary').textContent),'其他连接方式');
+await page.cdp('Emulation.setDeviceMetricsOverride',{width:900,height:650,deviceScaleFactor:1,mobile:false});
+assert.equal(await page.evaluate(()=>{const d=document.querySelector('.models-config').getBoundingClientRect(),f=document.querySelector('.models-config footer').getBoundingClientRect();return d.left>=0&&d.right<=innerWidth&&f.bottom<=innerHeight&&d.top>=0}),true);
+await page.screenshot({path:(await import('node:path')).join((await import('node:os')).tmpdir(),'margin-login-zh-900x650.png')});
+await page.cdp('Emulation.clearDeviceMetricsOverride');
+await page.selectOption('#chatgpt-model','mock-vision-detailed');
+await page.click('button[form="model-config-form"]');
+await page.waitForSelector('.settings-notice');
+assert.equal(await page.evaluate(()=>window.__qa.aiConfig.model),'mock-vision-detailed');
+console.log('PASS: Chinese controls, compact layout and explicit model selection.');
+console.log('All native-login browser fixture checks passed.');

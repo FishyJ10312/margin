@@ -69,7 +69,7 @@ try{
   const model=models.getModel(m.provider,m.model);if(!model||!model.input?.includes('image'))throw new Error('vision-model-required');
   const content=[{type:'text',text:m.prompt}];
   for(const url of m.images||[]){if(typeof url!=='string'||url.length>2*1024*1024||!url.startsWith('data:image/jpeg;base64,'))throw new Error('invalid-image');content.push({type:'image',data:url.split(',')[1],mimeType:'image/jpeg'});}
-  const stream=models.streamSimple(model,{messages:[{role:'user',content,timestamp:Date.now()}],tools:[]},{signal:controller.signal,maxTokens:10000,reasoning:'low'});
+  const stream=models.streamSimple(model,{messages:[{role:'user',content,timestamp:Date.now()}],tools:[]},{signal:controller.signal,maxTokens:10000,reasoning:'low',maxRetries:0});
   let textBytes=0;for await(const event of stream){if(event.type==='text_delta'){textBytes+=Buffer.byteLength(event.delta);if(textBytes>256*1024){controller.abort();throw new Error('output-too-large');}}}
   const result=await stream.result();if(result.stopReason!=='stop')throw new Error(result.stopReason==='aborted'?'cancelled':'incomplete-response');
   const text=result.content.filter(b=>b.type==='text').map(b=>b.text).join('');if(!text||Buffer.byteLength(text)>256*1024)throw new Error('invalid-output');

@@ -28,6 +28,7 @@
   onDestroy(()=>{disposed=true;cancelAnimationFrame(frame);observer?.disconnect();host?.removeEventListener('wheel',wheel);});
 </script>
 <div class="zoom-toolbar" aria-label={$t("照片缩放")}>
+  <div class="viewport-heading"><slot name="heading" /></div>
   <button class="icon-button" aria-label={$t("缩小照片")} on:click={()=>setZoom(zoom/1.15)}><Minus size={14}/></button>
   <input aria-label={$t("照片缩放百分比")} type="number" min="0.5" max="400" step="0.1" value={percent} on:change={(e)=>setZoom(e.currentTarget.valueAsNumber/100)}/><span>%</span>
   <button class="icon-button" aria-label={$t("放大照片")} on:click={()=>setZoom(zoom*1.15)}><Plus size={14}/></button>
@@ -44,11 +45,15 @@
   {#if !picking}<span class="pan-hint"><Move size={11}/> {$t("滚轮缩放 · 拖动平移")}</span>{/if}
 </div>
 <style>
-.zoom-toolbar{display:flex;align-items:center;justify-content:center;gap:5px;padding:0 16px 7px;color:#76836e;font-size:11px;}
-.zoom-toolbar input[type=number]{width:61px;text-align:right;height:26px;padding:3px;border:1px solid #dfe5d7;background:#fff9;}
-.zoom-range{max-width:120px;margin:0 8px;}
+.zoom-toolbar{display:flex;align-items:center;gap:4px;min-block-size:42px;padding:4px 12px;color:var(--muted);font-size:11px;}
+.viewport-heading{flex:1;min-inline-size:0;margin-inline-end:12px;}
+.zoom-toolbar input[type=number]{width:54px;text-align:right;height:26px;padding:3px;border:1px solid transparent;background:transparent;color:var(--muted);}
+.zoom-toolbar input[type=number]:hover,.zoom-toolbar input[type=number]:focus{border-color:var(--border);background:var(--surface);}
+.zoom-toolbar :global(.text-button){font-size:11px;}
+.zoom-range{max-width:84px;margin:0 6px!important;}
 .photo-viewport{display:block;position:relative;overflow:hidden;padding:0;isolation:isolate;min-height:100px;touch-action:none;}
 .zoom-photo{position:absolute;top:50%;left:50%;max-width:none;max-height:none;object-fit:fill;pointer-events:none;transform-origin:center;will-change:transform;filter:none;box-shadow:none;transition:none;-webkit-user-select:none;user-select:none;}
 .pan-surface{position:absolute;inset:0;width:100%;height:100%;border:0;background:transparent;cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;}
-.dragging .pan-surface{cursor:grabbing;}.pan-hint{position:absolute;bottom:9px;right:12px;font-size:10px;color:#8c9983;display:flex;align-items:center;gap:5px;pointer-events:none;}
+.dragging .pan-surface{cursor:grabbing;}.pan-hint{position:absolute;bottom:8px;right:12px;font-size:11px;color:var(--muted);display:flex;align-items:center;gap:5px;pointer-events:none;}
+@media(max-width:1050px){.zoom-range{display:none;}.viewport-heading{margin-inline-end:4px;}}
 </style>

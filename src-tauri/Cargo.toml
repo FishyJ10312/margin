@@ -1,9 +1,13 @@
 [package]
 name = "liubai"
-version = "0.9.5"
+version = "0.11.3"
 description = "Local photo frames and watermarks"
 authors = ["FishyJ"]
 edition = "2021"
+
+[features]
+default = []
+qa-source-block = []
 
 [lib]
 name = "liubai_lib"
@@ -25,6 +29,7 @@ tiny-skia = {version="0.12",default-features=false,features= ["std", "simd"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 tempfile = "3"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+png = "=0.18.1"
 libheif-rs = { version = "2.6", default-features = false, features = ["v1_20"] }
 lcms2 = { version = "6", features = ["static"] }
 cosmic-text = "0.19"
@@ -35,6 +40,9 @@ tokio = { version = "1", features = ["process", "time", "sync", "macros", "net",
 jsonwebtoken = "=9.3.1"
 keyring = { version = "=3.6.3", default-features = false, features = ["apple-native", "windows-native"] }
 ring = "0.17"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [profile.release]
 strip = true

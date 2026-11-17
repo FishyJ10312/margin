@@ -13,6 +13,7 @@ fn rss_kib() -> u64 {
         .unwrap_or(0)
 }
 fn main() -> Result<(), String> {
+    if liubai_lib::source_io::worker_entry_if_requested() { return Ok(()); }
     let a: Vec<String> = std::env::args().collect();
     let source = PathBuf::from(a.get(1).ok_or("source")?);
     let output = PathBuf::from(a.get(2).ok_or("output")?);
