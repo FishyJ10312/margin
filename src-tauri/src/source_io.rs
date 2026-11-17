@@ -682,7 +682,51 @@ mod tests {
     }
 
     #[test]
+    fn queued_deadline_does_not_start_another_reader_and_retry_recovers() {
+        if crate::test_support::isolated_source_fixture() { return; }
+        let root = tempfile::tempdir().unwrap();
+        let fixtures = root.path().join("margin-read-fixtures");
+        fs::create_dir(&fixtures).unwrap();
+        let paths: Vec<_> = (0..3).map(|i| fixtures.join(format!("queue-{i}.png"))).collect();
+        for path in &paths {
+            image::RgbImage::from_pixel(32, 24, image::Rgb([40, 100, 160])).save(path).unwrap();
+            let fifo = CString::new(path.with_extension("margin-qa-pipe").to_string_lossy().as_bytes()).unwrap();
+            assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
+            fs::write(path.with_extension("margin-qa-block"), b"QA").unwrap();
+        }
+        let before: Vec<_> = paths.iter().map(|p| fs::read(p).unwrap()).collect();
+        let mut readers = Vec::new();
+        let mut flags = Vec::new();
+        for path in paths.iter().take(2) {
+            let flag = Arc::new(AtomicBool::new(false));
+            let cancel = flag.clone();
+            let path = path.clone();
+            readers.push(thread::spawn(move || with_cancel(cancel, || metadata(&path))));
+            flags.push(flag);
+        }
+        let at = Instant::now();
+        while !paths.iter().take(2).all(|p| p.with_extension("margin-qa-entered").is_file())
+            && at.elapsed() < Duration::from_secs(2) {
+            thread::sleep(Duration::from_millis(2));
+        }
+        let both_entered = paths.iter().take(2).all(|p| p.with_extension("margin-qa-entered").is_file());
+        let result = with_timeout(Duration::from_millis(100), || metadata(&paths[2]));
+        let third_entered = paths[2].with_extension("margin-qa-entered").is_file();
+        // Release every owned blocked read before asserting, including red runs.
+        for flag in flags { flag.store(true, Ordering::Release); }
+        for reader in readers { assert!(reader.join().unwrap().is_err_and(|e| e == CANCELLED)); }
+        assert!(both_entered, "Both real reader slots must be occupied");
+        assert!(result.is_err_and(|e| e == TIMEOUT));
+        assert!(!third_entered, "A queue timeout must not launch a third source reader");
+        fs::remove_file(paths[2].with_extension("margin-qa-block")).unwrap();
+        clear_failures();
+        assert!(metadata(&paths[2]).unwrap().is_file, "A healthy retry must recover after the blocked slots are reclaimed");
+        for (path, bytes) in paths.iter().zip(before) { assert_eq!(fs::read(path).unwrap(), bytes); }
+    }
+
+    #[test]
     fn blocked_source_read_has_a_deadline_and_releases_the_renderer() {
+        if crate::test_support::isolated_source_fixture() { return; }
         let root = tempfile::tempdir().unwrap();
         let fixtures = root.path().join("margin-read-fixtures");
         fs::create_dir(&fixtures).unwrap();
@@ -761,6 +805,7 @@ mod tests {
     }
     #[test]
     fn cancelling_a_blocked_batch_releases_input_and_resumes_frozen_settings() {
+        if crate::test_support::isolated_source_fixture() { return; }
         let root = tempfile::tempdir().unwrap();
         let fixtures = root.path().join("margin-read-fixtures");
         fs::create_dir(&fixtures).unwrap();
@@ -860,6 +905,7 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn repeated_timeouts_cancellation_and_retries_reclaim_reader_resources() {
+        if crate::test_support::isolated_source_fixture() { return; }
         let root = tempfile::tempdir().unwrap();
         let fixtures = root.path().join("margin-read-fixtures");
         fs::create_dir(&fixtures).unwrap();
@@ -972,6 +1018,7 @@ mod tests {
 
     #[test]
     fn an_older_failure_cannot_repopulate_the_cache_after_explicit_retry() {
+        if crate::test_support::isolated_source_fixture() { return; }
         let root = tempfile::tempdir().unwrap();
         let fixtures = root.path().join("margin-read-fixtures");
         fs::create_dir(&fixtures).unwrap();
@@ -1011,6 +1058,7 @@ mod tests {
     }
     #[test]
     fn partial_body_timeouts_and_cancellation_release_buffers_and_helpers() {
+        if crate::test_support::isolated_source_fixture() { return; }
         let root = tempfile::tempdir().unwrap();
         let fixtures = root.path().join("margin-read-fixtures");
         fs::create_dir(&fixtures).unwrap();

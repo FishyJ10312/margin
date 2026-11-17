@@ -679,6 +679,10 @@
     while(!ready()){if(Date.now()>end)throw new Error($t('操作尚未完成，请查看主界面进度后重试'));await new Promise(resolve=>setTimeout(resolve,35));}
   }
 
+  function requireAgentWindow(){
+    if(pickingColor||choosingPhotos||document.querySelector('dialog[open]:not(.agent-connection)'))throw new Error($t('请先完成或关闭当前对话框'));
+  }
+
   async function handleAgentCommand(command:AgentCommand){
     let result:unknown=null,problem:string|null=null,ownsMutation=false;
     try{
@@ -686,10 +690,11 @@
       const mutating=!readOnlyAgentTools.has(command.name);
       if(mutating){
         if(agentBusy||importing||choosingPhotos||starting||undoing||pendingImports.length)throw new Error($t('请等待当前操作完成后再使用 Agent'));
-        if(pickingColor||document.querySelector('dialog[open]:not(.agent-connection)'))throw new Error($t('请先完成或关闭当前对话框'));
+        requireAgentWindow();
         agentBusy=true;ownsMutation=true;await tick();
         clearTimeout(saveTimer);if(!validateLocal(settings))queuedSave=clone(settings);
         void drainSave();await agentWait(()=>!saveInFlight&&!queuedSave&&!selectionSaving&&!pendingSelectionSave);
+        requireAgentWindow();
       }
       const args=command.arguments,order=photos.map(photo=>photo.id);
       switch(command.name){
@@ -706,6 +711,7 @@
           if(!style)throw new Error($t('模板已变化，请重新读取模板列表'));
           const next={...clone(settings),ratio:clone(style.ratio),borderPercent:style.borderPercent,frameColor:style.frameColor,decoration:clone(style.decoration),artwork:style.artwork?clone(style.artwork):null};
           const invalid=validateLocal(next);if(invalid)throw new Error(invalid);
+          requireAgentWindow();
           await invoke('save_settings',{settings:next});applyFrameTemplate(next);await tick();result=agentWorkspace();break;
         }
         case 'margin_import_photos':{
@@ -733,6 +739,7 @@
           const fonts=await invoke<FontOption[]>('list_fonts');
           const next=patchAgentSettings(settings,args.patch,fonts),invalid=validateLocal(next);
           if(invalid)throw new Error(invalid);
+          requireAgentWindow();
           await invoke('save_settings',{settings:next});settings=next;syncControls();await tick();result=agentWorkspace();break;
         }
         case 'margin_get_preview':{

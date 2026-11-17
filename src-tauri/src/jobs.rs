@@ -1048,16 +1048,51 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn an_in_flight_preview_is_obsolete_when_a_later_request_arrives() {
+        if crate::test_support::isolated_source_fixture() { return; }
         use std::ffi::CString;
-        let root=tempfile::tempdir().unwrap();let fixtures=root.path().join("margin-read-fixtures");fs::create_dir(&fixtures).unwrap();let path=fixtures.join("regular.jpg");RgbImage::from_pixel(32,24,Rgb([20,40,60])).save(&path).unwrap();
-        let backend=Backend::new(root.path().join("state")).unwrap();let photo=backend.import_photos(vec![path.to_string_lossy().into()]).unwrap().photos.remove(0);
-        let fifo=CString::new(path.with_extension("margin-qa-pipe").to_string_lossy().as_bytes()).unwrap();assert_eq!(unsafe{libc::mkfifo(fifo.as_ptr(),0o600)},0);fs::write(path.with_extension("margin-qa-block"),b"QA").unwrap();
-        let old_backend=backend.clone();let old_id=photo.id.clone();let old=std::thread::spawn(move||old_backend.preview(&old_id,&RenderSettings::default()));
-        let at=std::time::Instant::now();while !path.with_extension("margin-qa-entered").is_file()&&at.elapsed()<Duration::from_secs(2){std::thread::sleep(Duration::from_millis(2));}
-        let reached=path.with_extension("margin-qa-entered").is_file();let current_backend=backend.clone();let id=photo.id.clone();let current=std::thread::spawn(move||{let mut settings=RenderSettings::default();settings.border_percent=10.0;current_backend.preview(&id,&settings)});
-        let at=std::time::Instant::now();while backend.preview_generation.load(Ordering::Acquire)<2&&at.elapsed()<Duration::from_secs(2){std::thread::sleep(Duration::from_millis(2));}
-        fs::remove_file(path.with_extension("margin-qa-block")).unwrap();let fd=unsafe{libc::open(fifo.as_ptr(),libc::O_WRONLY|libc::O_NONBLOCK)};if fd>=0{unsafe{libc::close(fd);}}
-        let old=old.join().unwrap();let current=current.join().unwrap();assert!(reached);assert!(old.is_err_and(|e|e=="预览设置已更新。"),"An old in-flight preview returned success after a newer request");assert!(current.is_ok());
+        let root = tempfile::tempdir().unwrap();
+        let fixtures = root.path().join("margin-read-fixtures");
+        fs::create_dir(&fixtures).unwrap();
+        let path = fixtures.join("regular.jpg");
+        RgbImage::from_pixel(32, 24, Rgb([20, 40, 60])).save(&path).unwrap();
+        let backend = Backend::new(root.path().join("state")).unwrap();
+        let photo = backend.import_photos(vec![path.to_string_lossy().into()]).unwrap().photos.remove(0);
+        let fifo = CString::new(path.with_extension("margin-qa-pipe").to_string_lossy().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
+        fs::write(path.with_extension("margin-qa-block"), b"QA").unwrap();
+        let old_backend = backend.clone();
+        let old_id = photo.id.clone();
+        let old = std::thread::spawn(move || old_backend.preview(&old_id, &RenderSettings::default()));
+        let at = std::time::Instant::now();
+        while !path.with_extension("margin-qa-entered").is_file() && at.elapsed() < Duration::from_secs(2) {
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        let reached = path.with_extension("margin-qa-entered").is_file();
+        let current_backend = backend.clone();
+        let id = photo.id.clone();
+        let current = std::thread::spawn(move || {
+            let mut settings = RenderSettings::default();
+            settings.border_percent = 10.0;
+            current_backend.preview(&id, &settings)
+        });
+        let at = std::time::Instant::now();
+        while backend.preview_generation.load(Ordering::Acquire) < 2 && at.elapsed() < Duration::from_secs(2) {
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        let newer_registered = backend.preview_generation.load(Ordering::Acquire) >= 2;
+        fs::remove_file(path.with_extension("margin-qa-block")).unwrap();
+        // A receipt is written before File::open(FIFO), so one nonblocking
+        // writer open can miss the reader. Complete the real handshake instead.
+        let released = crate::test_support::connect_fifo_writer(&fifo, Duration::from_secs(1));
+        let old = old.join().unwrap();
+        let current = current.join().unwrap();
+        let old_summary = format!("{:?}", old.as_ref().map(|_| "success").map_err(|e| e.as_str()));
+        assert!(reached);
+        assert!(newer_registered, "The newer request must be registered before releasing the old input");
+        assert!(released, "The controlled input reader never received the FIFO release");
+        assert!(old.is_err_and(|e| e == "预览设置已更新。"),
+            "The obsolete preview must be rejected after a newer request; actual={old_summary}");
+        assert!(current.is_ok());
     }
 
     #[test]

@@ -36,6 +36,13 @@ canvas and do not crop or stretch the photo. For a text watermark, choose a
 Custom font/PNG paths must be absolute local paths. Exports return a batch ID
 immediately; poll status rather than resubmitting. Collisions get numbered names.
 
+The local reliability revision adds optional `operationId` values to mutating
+tools so a lost reply can be retried without repeating an accepted operation.
+Reuse the same ID, tool and arguments within the same running app; after an app
+restart, inspect the saved workspace/batch first. Limits, reproductions and the
+separate native test results are recorded in [MCP reliability](mcp-reliability-0.11.3.md).
+That revision is included in the separately authorized [0.11.4 update](update-0.11.4.md).
+
 ## Boundaries
 
 - The connection starts disabled. The user's enable/editing preferences persist.

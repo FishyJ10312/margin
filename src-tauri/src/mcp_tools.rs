@@ -21,10 +21,13 @@ pub fn definitions() -> Vec<Value> {
     }});
     let tool = |name: &str,
                 description: &str,
-                input: Value,
+                mut input: Value,
                 read: bool,
                 destructive: bool,
                 idempotent: bool| {
+        if !read {
+            input["properties"]["operationId"] = json!({"type":"string","minLength":1,"maxLength":128,"description":"Generate a unique ID before this operation. Reuse the SAME ID and arguments after a lost reply/deadline; Margin will not repeat an accepted mutation. IDs are retained for this running app only (128 IDs, 16 MiB results; no silent eviction). Query workspace/export status before retrying without an ID or after an app restart."});
+        }
         json!({
             "name":name,"description":description,"inputSchema":input,
             "annotations":{"readOnlyHint":read,"destructiveHint":destructive,"idempotentHint":idempotent,"openWorldHint":false}
@@ -39,7 +42,7 @@ pub fn definitions() -> Vec<Value> {
         tool("margin_export_photos", "Start a local batch export to an absolute outputDirectory. scope defaults to selected; use all or ids explicitly. Does not overwrite originals; output collisions are numbered. Returns immediately; poll margin_get_export_status.", json!({"type":"object","additionalProperties":false,"required":["outputDirectory"],"properties":{"outputDirectory":path,"scope":{"enum":["selected","all","ids"],"default":"selected"},"ids":ids}}), false, false, false),
         tool("margin_get_export_status", "Read the current export batch and per-photo progress/errors/output paths. No new work or image decoding.", empty.clone(), true, false, true),
         tool("margin_cancel_export", "Request cancellation of the current export. The active photo finishes at a safe boundary; later photos stop. Originals remain intact.", empty.clone(), false, false, true),
-        tool("margin_remove_photos", "Remove selected photos or explicit IDs from the Margin catalog only. Never delete or rewrite source files. This changes the catalog and is recoverable through the persistent 20-operation undo history. Obtain the user's intent before calling.", json!({"type":"object","additionalProperties":false,"properties":{"ids":ids}}), false, true, true),
+        tool("margin_remove_photos", "Use a stable operationId for retries. Remove selected photos or explicit IDs from the Margin catalog only. Never delete or rewrite source files. This changes the catalog and is recoverable through the persistent 20-operation undo history. Obtain the user's intent before calling.", json!({"type":"object","additionalProperties":false,"properties":{"ids":ids}}), false, true, false),
         tool("margin_undo_removal", "Undo the latest catalog removal, including after app restart, restoring order, selection and active photo. Does not undo settings edits.", empty.clone(), false, false, false),
         tool("margin_redo_removal", "Redo the most recently undone catalog removal. Targets the recorded photos regardless of current selection. Originals remain intact.", empty.clone(), false, true, false),
         tool("margin_list_fonts", "List available built-in and system fonts, including Chinese fonts. Use the returned family/path when setting a text watermark.", empty.clone(), true, false, true),

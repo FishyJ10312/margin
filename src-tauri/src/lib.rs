@@ -32,6 +32,8 @@ mod refinement;
 pub mod stickers;
 mod storage;
 pub mod source_io;
+#[cfg(all(test, unix))]
+mod test_support;
 
 use app_models::{AppSnapshot, BatchSnapshot, ImportResult, Preset};
 use jobs::{Backend, ProgressSink};
