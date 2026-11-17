@@ -794,7 +794,7 @@
 
 <div class:drop-active={dragActive} class="app-shell gallery-shell">
   <header class="app-header">
-    <div class="header-leading"><div class="brand"><h1>{brand.name}</h1><span class="brand-seal" aria-hidden="true">留白</span></div></div>
+    <div class="header-leading"><div class="brand"><h1>{brand.name}</h1></div></div>
     <div class="header-actions">
       <button class="button quiet compact import-button" on:click={choosePhotos} disabled={!desktop || importing || choosingPhotos || agentBusy || loading || !initialized}>
         {#if importing}<LoaderCircle size={15} class="spin" />{:else}<ImagePlus size={16} />{/if}

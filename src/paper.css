@@ -31,7 +31,6 @@
 .gallery-shell .app-header { block-size: 56px; flex-basis: 56px; padding-inline: 24px; background: var(--surface); border-color: var(--border); }
 .gallery-shell .brand { gap: 10px; }
 .gallery-shell .brand h1 { font-family: var(--serif); font-size: 21px; font-weight: 600; letter-spacing: -.3px; }
-.brand-seal { display: inline-grid; place-items: center; inline-size: 22px; block-size: 26px; border-radius: 3px; background: var(--seal); color: #f7f4ee; font-family: var(--serif); font-size: 10px; line-height: 1.05; writing-mode: vertical-rl; letter-spacing: 0; transform: translateY(-1px); }
 .gallery-shell .header-actions { gap: 4px; }
 .gallery-shell .import-button { color: var(--ink); margin-inline-end: 6px; }
 .gallery-shell .header-actions .icon-button { inline-size: 36px; block-size: 36px; flex-basis: 36px; border-radius: 6px; }
