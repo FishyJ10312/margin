@@ -17,6 +17,9 @@
   --green: #1c1b19;
   --green-hover: #3a3631;
   --seal: #a63d2a;
+  --primary: #1c1b19;
+  --primary-hover: #3a3631;
+  --on-primary: #f7f4ee;
   --red: #b23b2b;
   --serif: ui-serif, 'Songti SC', 'STSong', 'Noto Serif CJK SC', 'Source Han Serif SC', Georgia, serif;
 }
@@ -37,8 +40,8 @@
 .gallery-shell .icon-button:hover:not(:disabled) { background: var(--surface-soft); color: var(--ink); }
 
 /* Buttons */
-.gallery-shell .button.primary, dialog .button.primary { background: var(--ink); border-color: var(--ink); color: #f7f4ee; }
-.gallery-shell .button.primary:hover:not(:disabled), dialog .button.primary:hover:not(:disabled) { background: var(--green-hover); border-color: var(--green-hover); }
+.gallery-shell .button.primary, dialog .button.primary { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+.gallery-shell .button.primary:hover:not(:disabled), dialog .button.primary:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); }
 .gallery-shell .button.secondary, dialog .button.secondary { background: var(--paper); color: var(--ink); border-color: #d4ccbe; }
 .gallery-shell .button.secondary:hover:not(:disabled), dialog .button.secondary:hover:not(:disabled) { background: var(--surface-soft); border-color: var(--border-strong); }
 .gallery-shell .text-button { color: var(--ink); }

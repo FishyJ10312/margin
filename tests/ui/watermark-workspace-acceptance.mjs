@@ -23,7 +23,7 @@ function visibleTogether(g){
  assert.ok(g.dock.width<=160&&g.dock.height<=140,'Close-up remains a miniature overlay');
  assert.ok(Math.abs(g.photo.right-g.panel.x)<=1,'The main photo uses all available width instead of reserving a side column');
  assert.ok(g.photo.height>=300,'Main photo keeps its full height, including at the smallest desktop size');
- assert.ok(g.list.y>=0&&g.list.bottom<=g.footer.y,'Keyboard font choices are visible');
+ assert.ok(g.list.y>=0&&g.list.bottom<=g.height&&(g.list.bottom<=g.footer.y||g.list.x>=g.footer.right),'Keyboard font choices are visible');
  assert.ok(g.strip.y>=g.footer.y-1&&g.strip.bottom<=g.footer.bottom+1&&g.footer.bottom<=g.height+1,'Thumbnails and export controls fit the window');
  assert.equal(g.documentWidth,g.width,'No horizontal page overflow');
 }

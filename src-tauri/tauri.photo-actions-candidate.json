@@ -5,7 +5,7 @@
     "windows": [{
       "label": "main", "title": "Margin · Photo Actions",
       "width": 1180, "height": 800, "minWidth": 900, "minHeight": 650,
-      "center": true, "backgroundColor": "#fbfcfa", "dragDropEnabled": true
+      "center": true, "backgroundColor": "#121212", "dragDropEnabled": true
     }]
   }
 }
