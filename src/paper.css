@@ -205,3 +205,23 @@
 .camera-tokens button:hover { border-style: solid; color: var(--ink); }
 .gallery-shell .camera-summary { color: var(--ink); overflow-wrap: anywhere; }
 .gallery-shell .camera-missing { color: var(--seal); }
+
+/* Export dialog: targets, file name, metadata */
+.export-targets { margin-block-end: 20px; }
+.export-targets > div { display: flex; flex-wrap: wrap; gap: 6px; margin-block-start: 8px; }
+.export-targets button { min-block-size: 32px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--paper); color: var(--ink); font-size: 12px; }
+.export-targets button.chosen { border-color: var(--primary); background: var(--primary); color: var(--on-primary); }
+.export-name-label { margin-block-start: 20px; }
+.export-name-example { overflow-wrap: anywhere; }
+.export-keep-exif { display: flex; align-items: flex-start; gap: 8px; margin-block-start: 14px; font-size: 12px; color: var(--ink); cursor: pointer; }
+.export-keep-exif input { margin: 2px 0 0; accent-color: var(--green); }
+.export-keep-exif small { color: var(--muted); }
+.export-done { position: fixed; z-index: 7; inset-inline-end: 360px; inset-block-end: 104px; display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--ink); font-size: 12px; box-shadow: 0 10px 30px rgb(0 0 0 / .25); }
+.export-done .text-button { gap: 5px; }
+
+/* Per-photo settings */
+.settings-scope { display: flex; gap: 3px; margin: 12px 16px 0; padding: 3px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-soft); }
+.settings-scope button { flex: 1; min-block-size: 28px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--muted); font-size: 12px; }
+.settings-scope button.active { border-color: var(--border-strong); background: var(--paper); color: var(--ink); }
+.scope-note { margin: 6px 16px 0; font-size: 11px; color: var(--muted); }
+.own-badge { position: absolute; inset-inline-start: 3px; inset-block-start: 3px; inline-size: 8px; block-size: 8px; border-radius: 50%; background: var(--primary); box-shadow: 0 0 0 2px rgb(0 0 0 / .35); }

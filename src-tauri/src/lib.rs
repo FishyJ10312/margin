@@ -163,6 +163,15 @@ async fn get_sampler_image(
     blocking(move || backend.sampler_image(&photo_id, x, y)).await
 }
 #[tauri::command]
+async fn set_photo_settings(
+    photo_ids: Vec<String>,
+    settings: Option<RenderSettings>,
+    state: BackendState<'_>,
+) -> Result<Vec<app_models::Photo>, String> {
+    let backend = state.inner().clone();
+    blocking(move || backend.set_photo_settings(photo_ids, settings)).await
+}
+#[tauri::command]
 async fn get_camera_info(
     photo_id: String,
     state: BackendState<'_>,
@@ -594,6 +603,7 @@ pub fn run() {
             get_sampler_image,
             get_watermark_detail,
             get_camera_info,
+            set_photo_settings,
             save_settings,
             save_preset,
             delete_preset,

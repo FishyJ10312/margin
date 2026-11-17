@@ -14,6 +14,8 @@
   export let onundo:()=>void;
   export let canRedo=false;
   export let onredo:()=>void;
+  /** Arrow keys move the active photo; Shift extends the selection. */
+  export let onstep:(delta:number,extend:boolean)=>void=()=>{};
   export let oncontextselect:(id:string)=>void;
   export let onremove:(ids:string[])=>Promise<void>;
   export let onerror:(message:string)=>void;
@@ -110,6 +112,10 @@
     if(!selectionDisabled&&event.key==='Escape'&&!event.metaKey&&!event.ctrlKey&&!event.altKey&&!event.shiftKey){
       if(selectedIds.length){event.preventDefault();onclearselection();}
       return;
+    }
+    if(!selectionDisabled&&['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.key)&&!event.metaKey&&!event.ctrlKey&&!event.altKey
+      &&!target?.closest('[role="tab"],[role="tablist"],[role="menu"],[role="slider"],.pan-surface,.mark-handle')){
+      event.preventDefault();onstep(event.key==='ArrowUp'||event.key==='ArrowLeft'?-1:1,event.shiftKey);return;
     }
     if(disabled)return;
     if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='z'&&!event.altKey){

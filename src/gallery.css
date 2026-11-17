@@ -27,8 +27,8 @@
 .gallery-shell .button.secondary { color: var(--ink); }
 .gallery-shell .export-button { min-inline-size: 100px; }
 .gallery-shell .icon-button { color: var(--muted); }
-.gallery-shell .language-picker .language-select { min-inline-size: 70px; max-inline-size: 70px; border-color: transparent; background: transparent; padding-inline: 27px 14px; }
-.gallery-shell .language-picker .language-select:hover { background: var(--surface-soft); }
+.gallery-shell .language-picker select { min-inline-size: 70px; max-inline-size: 70px; border-color: transparent; background: transparent; padding-inline: 27px 14px; }
+.gallery-shell .language-picker select:hover { background: var(--surface-soft); }
 .gallery-shell .language-picker > svg { inset-inline-start: 6px; color: var(--muted); }
 .gallery-shell .language-picker > .language-chevron { inset-inline-start: auto; inset-inline-end: 0; }
 .gallery-shell .workspace { grid-template-columns: minmax(0,1fr) 292px; }

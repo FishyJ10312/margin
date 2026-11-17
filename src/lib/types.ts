@@ -41,6 +41,10 @@ export interface ExportSettings {
   format: 'jpg' | 'png';
   jpegQuality: number;
   longEdge: number | null;
+  /** File name without extension; {name} = original name, {index} = 001, 002… */
+  namePattern: string;
+  /** Copy camera/lens/exposure EXIF into JPGs (never location). */
+  keepCameraInfo: boolean;
 }
 
 export interface RenderSettings {
@@ -60,6 +64,8 @@ export interface Photo {
   width: number;
   height: number;
   thumbnail: string;
+  /** This photo's own frame and watermark; absent when it uses the shared settings. */
+  settings?: RenderSettings | null;
 }
 
 export interface PreviewResult {
@@ -145,7 +151,7 @@ export const defaultSettings: RenderSettings = {
     marginPercent: 2,
     cameraTemplate: defaultCameraTemplate,
   },
-  export: { format: 'jpg', jpegQuality: 95, longEdge: null },
+  export: { format: 'jpg', jpegQuality: 95, longEdge: null, namePattern: '{name}-framed', keepCameraInfo: false },
 };
 
 export interface FontOption { family: string; path: string;chinese?:boolean;bundled?:boolean }

@@ -32,6 +32,8 @@ use crate::{
 struct LoadedImage {
     pixels: RgbaImage,
     camera: crate::camera_info::CameraInfo,
+    /// Camera fields to carry into exported JPGs when the user asks for it.
+    exif_block: Option<Vec<u8>>,
     warning: Option<String>,
     proxy: OnceLock<RgbaImage>,
 }
@@ -131,6 +133,12 @@ pub fn validate_settings(settings: &RenderSettings) -> Result<(), String> {
     }
     if !(1..=100).contains(&settings.export.jpeg_quality) {
         return Err("JPG 质量应在 1–100 之间".into());
+    }
+    if settings.export.name_pattern.trim().is_empty() {
+        return Err("请填写导出文件名".into());
+    }
+    if settings.export.name_pattern.chars().count() > 120 {
+        return Err("导出文件名最多 120 个字符".into());
     }
     if settings
         .export
@@ -448,6 +456,7 @@ fn loaded(path: &Path) -> Result<Arc<LoadedImage>, String> {
     };
     let mut decoded = decoded;
     decoded.camera = crate::camera_info::read(&input.bytes);
+    decoded.exif_block = crate::camera_info::portable_exif(&input.bytes);
     let image = Arc::new(decoded);
     let mut cache = CACHE
         .get()
@@ -521,6 +530,7 @@ fn decode_standard_bytes(path: &Path, bytes: &[u8]) -> Result<LoadedImage, Strin
     }
     Ok(LoadedImage {
         camera: Default::default(),
+        exif_block: None,
         pixels,
         proxy: OnceLock::new(),
         warning: None,
@@ -616,6 +626,7 @@ fn decode_heif(bytes: &[u8]) -> Result<LoadedImage, String> {
     }
     Ok(LoadedImage {
         camera: Default::default(),
+        exif_block: None,
         pixels,
         proxy: OnceLock::new(),
         warning: Some("HEIC 已读取静态主图，导出为 SDR sRGB".into()),
@@ -836,7 +847,21 @@ pub fn export_image(
     )?;
     let file = fs::File::create(destination).map_err(|e| failure("无法写入导出文件", e))?;
     let mut writer = BufWriter::new(file);
-    encode_rgb_image(&result, settings, &mut writer)?;
+    match source
+        .exif_block
+        .as_deref()
+        .filter(|_| settings.export.keep_camera_info && settings.export.format == "jpg")
+    {
+        Some(block) => {
+            let mut jpeg = Vec::new();
+            encode_rgb_image(&result, settings, &mut jpeg)?;
+            let jpeg = crate::camera_info::insert_into_jpeg(&jpeg, block).unwrap_or(jpeg);
+            writer
+                .write_all(&jpeg)
+                .map_err(|e| failure("导出文件未写入完整，请检查磁盘空间", e))?;
+        }
+        None => encode_rgb_image(&result, settings, &mut writer)?,
+    }
     writer
         .flush()
         .map_err(|e| failure("导出文件未写入完整，请检查磁盘空间", e))?;
@@ -1569,6 +1594,27 @@ mod tests {
         let (x, _) = watermark_position(full, &resolved.watermark, mark.width(), mark.height()).unwrap();
         assert_eq!(x, full.x);
         assert_eq!(dark_in_border(&plain), 0);
+
+        // Camera details travel into exported JPGs only when asked for, and
+        // never orientation or location.
+        let jpg_meta = |keep: bool| {
+            let out = dir.path().join(format!("meta-{keep}.jpg"));
+            let mut jpg = s.clone();
+            jpg.export.format = "jpg".into();
+            jpg.export.keep_camera_info = keep;
+            export_image(&with, &jpg, &out).unwrap();
+            let bytes = fs::read(&out).unwrap();
+            assert!(image::load_from_memory(&bytes).is_ok());
+            crate::camera_info::read(&bytes)
+        };
+        assert!(jpg_meta(false).is_empty());
+        let kept = jpg_meta(true);
+        assert_eq!(kept.aperture.as_deref(), Some("f/1.8"));
+        assert_eq!(kept.camera.as_deref(), Some("SONY ILCE-7M4"));
+        let block = crate::camera_info::portable_exif(&fs::read(&with).unwrap()).unwrap();
+        let parsed = exif::Reader::new().read_raw(block[6..].to_vec()).unwrap();
+        assert!(parsed.get_field(exif::Tag::Orientation, exif::In::PRIMARY).is_none());
+        assert!(parsed.get_field(exif::Tag::GPSLatitude, exif::In::PRIMARY).is_none());
 
         s.watermark.camera_template = "  ".into();
         assert!(validate_settings(&s).is_err());

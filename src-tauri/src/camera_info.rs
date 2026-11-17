@@ -150,6 +150,69 @@ pub fn read(bytes: &[u8]) -> CameraInfo {
     info
 }
 
+/// An APP1 "Exif" payload holding only camera, lens, exposure and capture-time
+/// fields from the source. GPS, orientation (pixels are already upright),
+/// maker notes and thumbnails are left out on purpose.
+pub fn portable_exif(bytes: &[u8]) -> Option<Vec<u8>> {
+    use exif::Tag;
+    const KEEP: [Tag; 13] = [
+        Tag::Make,
+        Tag::Model,
+        Tag::LensMake,
+        Tag::LensModel,
+        Tag::FocalLength,
+        Tag::FocalLengthIn35mmFilm,
+        Tag::FNumber,
+        Tag::ExposureTime,
+        Tag::PhotographicSensitivity,
+        Tag::ExposureBiasValue,
+        Tag::DateTimeOriginal,
+        Tag::OffsetTimeOriginal,
+        Tag::Artist,
+    ];
+    let exif = exif::Reader::new()
+        .read_from_container(&mut Cursor::new(bytes))
+        .ok()?;
+    let fields: Vec<&exif::Field> = KEEP
+        .iter()
+        .filter_map(|tag| exif.get_field(*tag, exif::In::PRIMARY))
+        .collect();
+    if fields.is_empty() {
+        return None;
+    }
+    let mut writer = exif::experimental::Writer::new();
+    for field in &fields {
+        writer.push_field(field);
+    }
+    let mut tiff = Cursor::new(Vec::new());
+    writer.write(&mut tiff, true).ok()?;
+    let mut block = b"Exif\0\0".to_vec();
+    block.extend_from_slice(tiff.get_ref());
+    // A JPEG segment holds at most 65,533 payload bytes.
+    (block.len() <= 65_533).then_some(block)
+}
+
+/// Insert an APP1 Exif segment after SOI (and after a JFIF APP0, if present).
+pub fn insert_into_jpeg(jpeg: &[u8], block: &[u8]) -> Option<Vec<u8>> {
+    if jpeg.len() < 4 || jpeg[0..2] != [0xFF, 0xD8] || block.len() > 65_533 {
+        return None;
+    }
+    let mut at = 2;
+    if jpeg[2..4] == [0xFF, 0xE0] && jpeg.len() >= 6 {
+        at += 2 + usize::from(u16::from_be_bytes([jpeg[4], jpeg[5]]));
+        if at > jpeg.len() {
+            return None;
+        }
+    }
+    let mut out = Vec::with_capacity(jpeg.len() + block.len() + 4);
+    out.extend_from_slice(&jpeg[..at]);
+    out.extend_from_slice(&[0xFF, 0xE1]);
+    out.extend_from_slice(&((block.len() + 2) as u16).to_be_bytes());
+    out.extend_from_slice(block);
+    out.extend_from_slice(&jpeg[at..]);
+    Some(out)
+}
+
 const SEPARATORS: [char; 2] = ['·', '|'];
 
 /// Fill `{camera}`, `{make}`, `{model}`, `{lens}`, `{focal}`, `{focal35}`,

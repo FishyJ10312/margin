@@ -7,6 +7,8 @@
  import type {Photo,RenderSettings,WatermarkDetail,OffsetLimits,PreviewResult} from './types';
  export let photo:Photo|null,settings:RenderSettings,overview:PreviewResult|null=null;
  export let onlimits:(limits:OffsetLimits|null)=>void;
+ /** Where the mark sits on the full-resolution canvas, for the drag handle. */
+ export let onbox:(box:{x:number;y:number;width:number;height:number}|null)=>void=()=>{};
  export let collapsed=false,oncollapse:(collapsed:boolean)=>void=()=>{};
  let detail:WatermarkDetail|null=null,error='',busy=false,zoom=1,view='detail';
  let shownPhoto='';
@@ -26,8 +28,8 @@
  async function drain(){if(inFlight||disposed)return;inFlight=true;
   try{while(queued&&!disposed){const next=queued;queued=null;busy=true;
    try{const result=await invoke<WatermarkDetail>('get_watermark_detail',{photoId:next.id,settings:next.settings});
-    if(!disposed&&next.id===photo?.id&&next.revision===revision){detail=result;error='';onlimits(result.limits);}
-   }catch(e){if(!disposed&&next.revision===revision){error=String(e);}}
+    if(!disposed&&next.id===photo?.id&&next.revision===revision){detail=result;error='';onlimits(result.limits);onbox(result.position);}
+   }catch(e){if(!disposed&&next.revision===revision){error=String(e);onbox(null);}}
   }}finally{inFlight=false;if(!disposed)busy=false;}
  }
  onDestroy(()=>{disposed=true;clearTimeout(timer);queued=null;});

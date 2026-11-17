@@ -8,6 +8,7 @@ import '../../src/app.css';
 import '../../src/gallery.css';
 import '../../src/paper.css';
 import '../../src/darkroom.css';
+import '../../src/light.css';
 const source=document.createElement('canvas');source.width=900;source.height=600;const ctx=source.getContext('2d')!;const sky=ctx.createLinearGradient(0,0,0,600);sky.addColorStop(0,'#245d91');sky.addColorStop(.6,'#6eb9cb');sky.addColorStop(1,'#dbbc80');ctx.fillStyle=sky;ctx.fillRect(0,0,900,600);ctx.fillStyle='#f3dba1';ctx.beginPath();ctx.arc(650,110,40,0,Math.PI*2);ctx.fill();const thumbnail=source.toDataURL();
 const settings:RenderSettings={...defaultSettings,watermark:{...defaultSettings.watermark,kind:'text',text:'留白 FishyJ',color:'#182e39',region:'border',marginPercent:1}};settings.borderPercent=12;
 let templates=JSON.parse(localStorage.getItem('liubai.qa.templates')??'[]');const requests:any[]=[];
@@ -128,6 +129,7 @@ Object.assign(window,{__TAURI_INTERNALS__:{metadata:{currentWindow:{label:'main'
   try{await new Promise(r=>setTimeout(r,detailControl.delay));const dataUrl=composed(args.settings,true);detailControl.rendered.push({settings:structuredClone(args.settings),dataUrl});return {dataUrl,width:160,height:26,viewWidth:240,viewHeight:100,watermarkBounds:{x:30,y:50,width:160,height:26},position:{x:450+args.settings.watermark.offsetX,y:720+args.settings.watermark.offsetY,width:160,height:26},limits:{minX:-450,maxX:150,minY:-80,maxY:40}};}finally{detailControl.active--;}
  }
  if(cmd==='get_camera_info')return {...fixtureCamera};
+ if(cmd==='set_photo_settings'){for(const p of fixturePhotos as any[])if(args.photoIds.includes(p.id)){if(args.settings)p.settings=structuredClone(args.settings);else delete p.settings;}persistCatalog();return structuredClone(fixturePhotos);}
  if(cmd==='list_fonts')return fonts;
  if(cmd==='list_builtin_frames')return structuredClone(gallery);
  if(cmd==='get_frame_template_previews')return Object.fromEntries(templates.map((t:any)=>[t.id,t.thumbnail]));

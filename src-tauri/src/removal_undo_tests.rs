@@ -17,6 +17,7 @@ fn fixture(count: usize) -> (tempfile::TempDir, Arc<Backend>) {
             width: 32,
             height: 24,
             thumbnail: "data:image/jpeg;base64,c3ludGhldGlj".into(),
+            settings: None,
         })
         .collect();
     backend.commit(&mut data, candidate).unwrap();

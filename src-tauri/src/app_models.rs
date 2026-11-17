@@ -87,6 +87,9 @@ pub struct Photo {
     pub height: u32,
     #[serde(default)]
     pub thumbnail: String,
+    /// This photo's own frame and watermark, overriding the shared settings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settings: Option<RenderSettings>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -114,6 +117,9 @@ pub struct JobItem {
     pub name: String,
     pub source_path: String,
     pub status: String,
+    /// The photo's own settings, frozen when the export started.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settings: Option<RenderSettings>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

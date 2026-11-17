@@ -17,7 +17,7 @@ pub fn definitions() -> Vec<Value> {
             "offsetX":{"type":"number","minimum":-50000,"maximum":50000},"offsetY":{"type":"number","minimum":-50000,"maximum":50000},"marginPercent":{"type":"number","minimum":0,"maximum":30},
             "region":{"enum":["photo","border"]},"position":{"enum":["top-left","top-center","top-right","center-left","center","center-right","bottom-left","bottom-center","bottom-right"]}
         }},
-        "export":{"type":"object","additionalProperties":false,"properties":{"format":{"enum":["jpg","png"]},"jpegQuality":{"type":"integer","minimum":1,"maximum":100},"longEdge":{"type":["integer","null"],"minimum":64,"maximum":30000}}}
+        "export":{"type":"object","additionalProperties":false,"properties":{"namePattern":{"type":"string","minLength":1,"maxLength":120},"keepCameraInfo":{"type":"boolean"},"format":{"enum":["jpg","png"]},"jpegQuality":{"type":"integer","minimum":1,"maximum":100},"longEdge":{"type":["integer","null"],"minimum":64,"maximum":30000}}}
     }});
     let tool = |name: &str,
                 description: &str,

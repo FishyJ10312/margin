@@ -155,3 +155,12 @@ dialog { color-scheme: dark; }
 .camera-presets button.chosen { background: #2a2215; border-color: #f0a23b; color: #f0a23b; }
 .camera-tokens button { border-color: #3a3a3a; }
 .gallery-shell .camera-missing { color: #f3c27a; }
+
+/* Near-black swatches need a visible rim on the dark panel. */
+.gallery-shell .palette-swatch { border-color: rgb(255 255 255 / .32); }
+.export-targets button { background: #141414; border-color: #333; color: #cfcfcf; }
+.export-targets button.chosen { background: #2a2215; border-color: #f0a23b; color: #f0a23b; }
+.export-done { background: #232323; border-color: #383838; }
+.export-done .text-button { color: #f0a23b; }
+.settings-scope { background: #141414; border-color: #2e2e2e; }
+.settings-scope button.active { background: #2a2215; border-color: #f0a23b; color: #f0a23b; }

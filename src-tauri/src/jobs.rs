@@ -199,6 +199,7 @@ impl Backend {
                     width: info.width,
                     height: info.height,
                     thumbnail,
+                    settings: None,
                 })
             })();
             match result {
@@ -467,6 +468,36 @@ impl Backend {
         imaging::watermark_detail(Path::new(&photo.path), &settings)
     }
 
+    /// Give photos their own settings, or return them to the shared ones (None).
+    pub fn set_photo_settings(
+        &self,
+        photo_ids: Vec<String>,
+        settings: Option<RenderSettings>,
+    ) -> Result<Vec<Photo>, String> {
+        let settings = match settings {
+            Some(mut own) => {
+                self.storage.own_settings_assets(&mut own)?;
+                imaging::validate_settings(&own)?;
+                Some(own)
+            }
+            None => None,
+        };
+        let mut data = self.lock()?;
+        let mut candidate = data.clone();
+        let ids: HashSet<&String> = photo_ids.iter().collect();
+        let mut changed = false;
+        for photo in candidate.photos.iter_mut().filter(|p| ids.contains(&p.id)) {
+            photo.settings = settings.clone();
+            changed = true;
+        }
+        if !changed {
+            return Err("请先选择照片".into());
+        }
+        self.storage.save(&candidate)?;
+        *data = candidate;
+        Ok(data.photos.clone())
+    }
+
     pub fn camera_info(&self, photo_id: &str) -> Result<crate::camera_info::CameraInfo, String> {
         let path = self
             .lock()?
@@ -657,6 +688,7 @@ impl Backend {
                     name: p.name.clone(),
                     source_path: p.path.clone(),
                     status: "pending".into(),
+                    settings: p.settings.clone(),
                     output_path: None,
                     temporary_path: None,
                     error: None,
@@ -664,6 +696,14 @@ impl Backend {
                     height: None,
                 })
                 .collect();
+            for item in &items {
+                if let Some(own) = &item.settings {
+                    let mut check = own.clone();
+                    check.export = settings.export.clone();
+                    imaging::validate_settings(&check)
+                        .map_err(|e| format!("{}：{e}", item.name))?;
+                }
+            }
             if items.is_empty() {
                 return Err("请先导入并选择要导出的照片。".into());
             }
@@ -810,7 +850,14 @@ impl Backend {
                     batch.items[index].error = None;
                     batch.revision = batch.revision.saturating_add(1);
                     let item = batch.items[index].clone();
-                    let settings = batch.settings.clone();
+                    // A photo's own settings win; export options stay shared.
+                    let settings = match &item.settings {
+                        Some(own) => RenderSettings {
+                            export: batch.settings.export.clone(),
+                            ..own.clone()
+                        },
+                        None => batch.settings.clone(),
+                    };
                     let directory = PathBuf::from(&batch.output_directory);
                     let snapshot = batch.clone();
                     // export_one commits "running" together with ownership of
@@ -908,14 +955,14 @@ impl Backend {
         } else {
             "jpg"
         };
-        let stem = safe_stem(Path::new(&item.name));
+        let stem = output_stem(&settings.export.name_pattern, Path::new(&item.name), index + 1);
         for number in 1..100_000u32 {
             let suffix = if number == 1 {
                 String::new()
             } else {
                 format!("-{number}")
             };
-            let target = directory.join(format!("{stem}-framed{suffix}.{extension}"));
+            let target = directory.join(format!("{stem}{suffix}.{extension}"));
             if target.exists() {
                 continue;
             }
@@ -1029,6 +1076,32 @@ fn display_name(path: &Path) -> String {
         .into_owned()
 }
 
+/// Fill the export name pattern; `{name}` is the source file name and `{index}`
+/// the 1-based position in this export. Unsafe characters become `_`.
+fn output_stem(pattern: &str, source: &Path, index: usize) -> String {
+    let name = safe_stem(source);
+    let filled = pattern
+        .replace("{name}", &name)
+        .replace("{index}", &format!("{index:03}"));
+    let cleaned: String = filled
+        .chars()
+        .map(|ch| {
+            if ch.is_control() || matches!(ch, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') {
+                '_'
+            } else {
+                ch
+            }
+        })
+        .take(120)
+        .collect();
+    let cleaned = cleaned.trim().trim_start_matches('.').trim().to_string();
+    if cleaned.is_empty() {
+        format!("{name}-framed")
+    } else {
+        cleaned
+    }
+}
+
 fn safe_stem(path: &Path) -> String {
     let stem = path.file_stem().unwrap_or_default().to_string_lossy();
     let cleaned: String = stem
@@ -1056,6 +1129,15 @@ fn safe_stem(path: &Path) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn export_names_follow_the_pattern() {
+        let source = Path::new("/photos/IMG_2290.HEIC");
+        assert_eq!(output_stem("{name}-framed", source, 1), "IMG_2290-framed");
+        assert_eq!(output_stem("Trip {index}", source, 7), "Trip 007");
+        assert_eq!(output_stem("../{name}:x", source, 1), "_IMG_2290_x");
+        assert_eq!(output_stem("   ", source, 1), "IMG_2290-framed");
+    }
+
     #[cfg(unix)]
     #[test]
     fn an_in_flight_preview_is_obsolete_when_a_later_request_arrives() {
@@ -1312,6 +1394,62 @@ mod tests {
         assert!(backend.sample_color(id, 10, 10).is_ok());
     }
     #[test]
+    fn a_photos_own_settings_override_the_shared_frame_on_export() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut paths = Vec::new();
+        for name in ["shared", "own"] {
+            let path = directory.path().join(format!("{name}.png"));
+            RgbImage::from_pixel(60, 40, Rgb([90, 120, 160])).save(&path).unwrap();
+            paths.push(path.to_string_lossy().into_owned());
+        }
+        let backend = Backend::new(directory.path().join("state")).unwrap();
+        let photos = backend.import_photos(paths).unwrap().photos;
+        let own_id = photos.iter().find(|p| p.name.starts_with("own")).unwrap().id.clone();
+        let mut own = RenderSettings::default();
+        own.border_percent = 20.;
+        own.frame_color = "#000000".into();
+        own.export.format = "png".into(); // ignored: export options stay shared
+        let updated = backend.set_photo_settings(vec![own_id.clone()], Some(own)).unwrap();
+        assert!(updated.iter().find(|p| p.id == own_id).unwrap().settings.is_some());
+
+        let mut shared = RenderSettings::default();
+        shared.frame_color = "#FFFFFF".into();
+        shared.export.format = "png".into();
+        shared.export.name_pattern = "{index}-{name}".into();
+        let output = directory.path().join("out");
+        fs::create_dir(&output).unwrap();
+        let ids = photos.iter().map(|p| p.id.clone()).collect();
+        backend
+            .start_batch(output.to_string_lossy().into_owned(), shared, ids, Arc::new(|_| {}))
+            .unwrap();
+        wait_for_worker(&backend);
+        let batch = backend.snapshot().unwrap().batch.unwrap();
+        assert_eq!(batch.status, "completed");
+        let corner = |item: &JobItem| {
+            let img = image::open(item.output_path.as_ref().unwrap()).unwrap().to_rgb8();
+            (img.dimensions(), *img.get_pixel(1, 1))
+        };
+        for item in &batch.items {
+            let ((w, h), pixel) = corner(item);
+            if item.photo_id == own_id {
+                assert_eq!(pixel, Rgb([0, 0, 0]));
+                assert_eq!((w, h), (76, 56));
+            } else {
+                assert_eq!(pixel, Rgb([255, 255, 255]));
+                assert_eq!((w, h), (64, 44));
+            }
+            assert!(item.output_path.as_ref().unwrap().ends_with(".png"));
+        }
+        assert!(output.join("001-shared.png").exists() || output.join("002-shared.png").exists());
+
+        // Returning to the shared settings clears the override.
+        let cleared = backend.set_photo_settings(vec![own_id.clone()], None).unwrap();
+        assert!(cleared.iter().all(|p| p.settings.is_none()));
+        let restarted = Backend::new(directory.path().join("state")).unwrap();
+        assert!(restarted.snapshot().unwrap().photos.iter().all(|p| p.settings.is_none()));
+    }
+
+    #[test]
     fn fifty_photos_dedupe_fail_isolation_collision_and_no_source_mutation() {
         let directory = tempfile::tempdir().unwrap();
         let source = directory.path().join("中文照片");
@@ -1476,6 +1614,7 @@ mod tests {
                     .to_string_lossy()
                     .into_owned(),
                 status: "running".into(),
+                settings: None,
                 output_path: Some(output.to_string_lossy().into_owned()),
                 temporary_path: None,
                 error: None,

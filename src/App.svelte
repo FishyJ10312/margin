@@ -8,7 +8,7 @@
   import {
     ImagePlus, Plus, Download, FolderOpen, ArrowLeftRight, X, Check,
     LoaderCircle, AlertCircle, CheckCircle2, Bookmark, Trash2, RotateCcw, RotateCw, Plug,
-    Image as ImageIcon, Type, ChevronDown, FileImage, List, Pipette, WandSparkles, SlidersHorizontal, Languages, Aperture } from '@lucide/svelte';
+    Image as ImageIcon, Type, ChevronDown, FileImage, List, Pipette, WandSparkles, SlidersHorizontal, Languages, Aperture, SunMoon } from '@lucide/svelte';
   import ModelPanel from './lib/ModelPanel.svelte';
   import ModelsConfig from './lib/ModelsConfig.svelte';
   import PatternSwatch from './lib/PatternSwatch.svelte';
@@ -22,6 +22,7 @@
   import {singlePhotoSelection,allPhotoSelection,clearPhotoSelection,restoredPhotoSelection,selectCatalogPhoto,contextCatalogPhoto,selectionAfterRemoval,type PhotoSelection} from './lib/photo-selection';
   import {language} from './lib/i18n';
   import {brand} from './lib/brand';
+  import {theme} from './lib/theme';
   import {startupDeadline} from './lib/startup';
   import type {OffsetLimits,AiConfig} from './lib/types';
   import {
@@ -73,6 +74,60 @@
   function selectContextPhoto(id:string) {
     photoSelection=contextCatalogPhoto(photos.map(photo=>photo.id),photoSelection,id);
   }
+  function stepPhoto(delta:number,extend:boolean){
+    if(undoing||agentBusy)return;
+    const ids=photos.map(photo=>photo.id);
+    if(!ids.length)return;
+    const current=ids.indexOf(selectedId??'');
+    const next=ids[Math.max(0,Math.min(ids.length-1,current<0?0:current+delta))];
+    if(!next||(next===selectedId&&!extend))return;
+    photoSelection=selectCatalogPhoto(ids,photoSelection,next,{additive:false,range:extend});
+    requestAnimationFrame(()=>{
+      const thumb=document.querySelector<HTMLElement>(`.thumbnail[data-photo-id="${CSS.escape(next)}"]`);
+      thumb?.scrollIntoView({block:'nearest',inline:'nearest'});
+      if(document.activeElement?.closest('.thumbnail'))thumb?.focus({preventScroll:true});
+    });
+  }
+  // Per-photo settings. While the active photo has its own settings, the
+  // inspector edits those (for every selected photo that has its own);
+  // otherwise it edits the shared settings. Export options are always shared.
+  let settingsOwner: string | null = null;
+  let sharedSettings: RenderSettings | null = null;
+  $: syncSettingsOwner(selectedPhoto, initialized);
+  function editedOwners(): string[] {
+    if (!settingsOwner) return [];
+    const ids = photos.filter(photo => photo.settings && selectedPhotoIds.has(photo.id)).map(photo => photo.id);
+    return ids.includes(settingsOwner) ? ids : [settingsOwner, ...ids];
+  }
+  function syncSettingsOwner(photo: Photo | null, ready: boolean) {
+    if (!ready) return;
+    const target = photo?.settings ? photo.id : null;
+    if (target === settingsOwner) return;
+    void flushSettingsSave();
+    const exportOptions = clone(settings.export);
+    if (settingsOwner === null) sharedSettings = settings;
+    settings = target && photo?.settings ? { ...clone(photo.settings), export: exportOptions } : { ...(sharedSettings ?? settings), export: exportOptions };
+    if (!target) sharedSettings = null;
+    settingsOwner = target;
+    resetSettingsHistory();
+    syncControls();
+  }
+  let scopeBusy = false;
+  async function setSettingsScope(own: boolean) {
+    if (!selectedPhoto || scopeBusy || own === !!settingsOwner) return;
+    const ids = selectedIds.length ? [...selectedIds] : [selectedPhoto.id];
+    scopeBusy = true;
+    try {
+      await flushSettingsSave();
+      const value = own ? clone(settings) : null;
+      await invoke('set_photo_settings', { photoIds: ids, settings: value });
+      const chosen = new Set(ids);
+      photos = photos.map(photo => chosen.has(photo.id) ? { ...photo, settings: value ? clone(value) : null } : photo);
+    } catch (error) { notices = [...notices, errorMessage(error)]; }
+    finally { scopeBusy = false; }
+  }
+  $: ownCount = photos.filter(photo => photo.settings).length;
+
   function selectAllPhotos(){photoSelection=allPhotoSelection(photos.map(photo=>photo.id),photoSelection);}
   function clearSelectedPhotos(){photoSelection=clearPhotoSelection(photoSelection);}
   let photoActions:PhotoLibraryActions;
@@ -97,7 +152,9 @@
   let previewTimer: ReturnType<typeof setTimeout> | undefined;
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
   let saveInFlight = false;
-  let queuedSave: RenderSettings | null = null;
+  // owners: photos whose own settings are being edited; empty = shared settings.
+  let queuedSave: { owners: string[]; settings: RenderSettings } | null = null;
+  let pendingSave: { owners: string[]; settings: RenderSettings } | null = null;
   let previewInFlight = false;
   let queuedPreview: { photoId: string; settings: RenderSettings; revision: number } | null = null;
   let unlisteners: (() => void)[] = [];
@@ -164,6 +221,20 @@
   let pickerButton: HTMLButtonElement;
   function closePicker() { pickingColor = false; pickerButton?.focus({ preventScroll: true }); }
   let offsetLimits:OffsetLimits|null=null;
+  let markBox:{x:number;y:number;width:number;height:number}|null=null;
+  let markDragStart:{x:number;y:number}|null=null;
+  $: if(!watermarkPreviewVisible)markBox=null;
+  // Dragging the watermark on the preview moves its offset; deltas arrive in
+  // full-canvas pixels and offsets are stored in source-photo pixels.
+  function dragMark(dx:number,dy:number,phase:'start'|'move'|'end'){
+    if(phase==='start'){markDragStart={x:settings.watermark.offsetX,y:settings.watermark.offsetY};return;}
+    if(!markDragStart||!selectedPhoto)return;
+    const scale=preview&&selectedPhoto.width?preview.photoBounds.width/selectedPhoto.width:1;
+    const clamp=(v:number,min?:number,max?:number)=>Math.round(Math.min(max??Infinity,Math.max(min??-Infinity,v)));
+    settings.watermark.offsetX=clamp(markDragStart.x+dx/scale,offsetLimits?.minX,offsetLimits?.maxX);
+    settings.watermark.offsetY=clamp(markDragStart.y+dy/scale,offsetLimits?.minY,offsetLimits?.maxY);
+    if(phase==='end'){if(markBox)markBox={...markBox,x:markBox.x+(settings.watermark.offsetX-markDragStart.x)*scale,y:markBox.y+(settings.watermark.offsetY-markDragStart.y)*scale};markDragStart=null;}
+  }
   let fonts: FontOption[] = [];
   let fontsLoading = false;
   let fontsError = '';
@@ -202,6 +273,51 @@
     lastFrameColor = settings.frameColor;
     frameHex = settings.frameColor;
     frameHexError = '';
+  }
+
+  // Settings history. A burst of edits (a slider drag, typing a colour) becomes
+  // one step once the controls have been idle for a moment.
+  let settingsUndo:string[]=[],settingsRedo:string[]=[];
+  let settingsBaseline='',settingsStepTimer:ReturnType<typeof setTimeout>|undefined;
+  let lastSettingsEditAt=0,lastRemovalAt=0,lastUndoKind:'settings'|'removal'|null=null;
+  $: if(initialized)trackSettings(JSON.stringify(settings));
+  $: removalUndo,removalRedo,lastRemovalAt=Date.now();
+  function trackSettings(serialized:string){
+    if(!settingsBaseline||serialized===settingsBaseline){settingsBaseline=serialized;return;}
+    lastSettingsEditAt=Date.now();
+    clearTimeout(settingsStepTimer);
+    settingsStepTimer=setTimeout(commitSettingsStep,400);
+  }
+  function commitSettingsStep(){
+    clearTimeout(settingsStepTimer);settingsStepTimer=undefined;
+    const current=JSON.stringify(settings);
+    if(!settingsBaseline||current===settingsBaseline)return;
+    settingsUndo=[...settingsUndo.slice(-49),settingsBaseline];settingsRedo=[];settingsBaseline=current;
+  }
+  function resetSettingsHistory(){clearTimeout(settingsStepTimer);settingsStepTimer=undefined;settingsUndo=[];settingsRedo=[];settingsBaseline='';}
+  function restoreSettings(serialized:string){settingsBaseline=serialized;settings=JSON.parse(serialized);syncControls();lastSettingsEditAt=Date.now();}
+  function undoSettings(){
+    commitSettingsStep();
+    const previous=settingsUndo[settingsUndo.length-1];if(!previous)return;
+    settingsUndo=settingsUndo.slice(0,-1);settingsRedo=[...settingsRedo,JSON.stringify(settings)];restoreSettings(previous);
+  }
+  function redoSettings(){
+    const next=settingsRedo[settingsRedo.length-1];if(!next)return;
+    settingsRedo=settingsRedo.slice(0,-1);settingsUndo=[...settingsUndo,JSON.stringify(settings)];restoreSettings(next);
+  }
+  // ⌘Z follows focus: in the photo strip it undoes catalog changes (removals);
+  // elsewhere it undoes whichever happened last, a settings edit or a removal.
+  const inLibrary=()=>!!document.activeElement?.closest('.library-footer');
+  function undoAny(){
+    if(settingsStepTimer)commitSettingsStep();
+    const preferRemoval=inLibrary()&&removalUndo.length>0;
+    if(!preferRemoval&&settingsUndo.length&&(!removalUndo.length||lastSettingsEditAt>=lastRemovalAt)){lastUndoKind='settings';undoSettings();}
+    else if(removalUndo.length){lastUndoKind='removal';void undoPhotoRemoval();}
+  }
+  function redoAny(){
+    const preferRemoval=inLibrary()&&removalRedo.length>0;
+    if(!preferRemoval&&settingsRedo.length&&(lastUndoKind==='settings'||!removalRedo.length))redoSettings();
+    else if(removalRedo.length)void redoPhotoRemoval();
   }
 
   function syncControls() {
@@ -311,14 +427,22 @@
     if (value.watermark.kind === 'image' && !value.watermark.imagePath) return $t("请选择一张 PNG 水印");
     if ((value.watermark.kind === 'text' || value.watermark.kind === 'camera') && !/^#[0-9a-f]{6}$/i.test(value.watermark.color)) return $t("请选择有效的水印颜色");
     if (value.export.longEdge != null && (!Number.isFinite(value.export.longEdge) || value.export.longEdge < 64)) return $t("输出长边至少为 64 像素");
+    if (value.export.namePattern != null && !value.export.namePattern.trim()) return $t("请填写导出文件名");
     return '';
   }
 
   function scheduleSettingsSave(serialized: string) {
     clearTimeout(saveTimer);
     const snapshot: RenderSettings = JSON.parse(serialized);
-    if (validateLocal(snapshot)) return;
-    saveTimer = setTimeout(() => { queuedSave = snapshot; void drainSave(); }, 500);
+    if (validateLocal(snapshot)) { pendingSave = null; return; }
+    pendingSave = { owners: editedOwners(), settings: snapshot };
+    saveTimer = setTimeout(flushSettingsSave, 500);
+  }
+  /** Send any edit still waiting for its debounce, e.g. before switching photos or exporting. */
+  function flushSettingsSave() {
+    clearTimeout(saveTimer);
+    if (pendingSave) { queuedSave = pendingSave; pendingSave = null; }
+    return drainSave();
   }
 
   async function drainSave() {
@@ -327,7 +451,14 @@
     try {
       while (queuedSave) {
         const next = queuedSave; queuedSave = null;
-        try { await invoke('save_settings', { settings: next }); }
+        try {
+          if (!next.owners.length) await invoke('save_settings', { settings: next.settings });
+          else {
+            await invoke('set_photo_settings', { photoIds: next.owners, settings: next.settings });
+            const owners = new Set(next.owners);
+            photos = photos.map(photo => owners.has(photo.id) ? { ...photo, settings: clone(next.settings) } : photo);
+          }
+        }
         catch (error) {
           const message = $t("设置未保存：{0}", {0:errorMessage(error)});
           if (!notices.includes(message)) notices = [...notices, message];
@@ -641,6 +772,30 @@
     } catch (error) { notices = [...notices, errorMessage(error)]; }
   }
 
+  // One-click export targets: canvas ratio, long edge and JPG quality together.
+  const exportTargets: {id:string;name:string;ratio?:{width:number;height:number}|null;longEdge:number|null;quality:number}[] = [
+    { id: 'original', name: '原图', longEdge: null, quality: 95 },
+    { id: 'xiaohongshu', name: '小红书 3:4', ratio: { width: 3, height: 4 }, longEdge: 2560, quality: 92 },
+    { id: 'instagram', name: 'Instagram 4:5', ratio: { width: 4, height: 5 }, longEdge: 1350, quality: 90 },
+    { id: 'moments', name: '朋友圈', longEdge: 2160, quality: 90 },
+  ];
+  $: activeExportTarget = exportTargets.find(target => settings.export.format === 'jpg' && settings.export.longEdge === target.longEdge && settings.export.jpegQuality === target.quality
+    && (target.ratio === undefined || (settings.ratio?.width === target.ratio?.width && settings.ratio?.height === target.ratio?.height)))?.id ?? '';
+  function applyExportTarget(id: string) {
+    const target = exportTargets.find(item => item.id === id);
+    if (!target) return;
+    settings.export = { ...settings.export, format: 'jpg', longEdge: target.longEdge, jpegQuality: target.quality };
+    if (target.ratio !== undefined) settings.ratio = target.ratio ? { ...target.ratio } : null;
+    syncControls();
+  }
+  $: exportNameExample = (() => {
+    const name = (selectedPhoto?.name ?? 'IMG_0001.jpg').replace(/\.[^.]+$/, '');
+    const stem = (settings.export.namePattern || '{name}-framed').replaceAll('{name}', name).replaceAll('{index}', '001').replace(/[<>:"/\\|?*]/g, '_').trim();
+    return `${stem || name + '-framed'}.${settings.export.format === 'png' ? 'png' : 'jpg'}`;
+  })();
+  let exportDone: { count: number; failed: number } | null = null;
+  let exportDoneTimer: ReturnType<typeof setTimeout> | undefined;
+
   function setLongEdge(mode: string) {
     longEdgeMode = mode;
     settings.export.longEdge = mode === 'original' ? null : mode === 'custom' ? customLongEdge : Number(mode);
@@ -657,7 +812,8 @@
   async function startBatch() {
     if (!desktop || !initialized || loading || isRunning || starting || importing || undoing || !exportPhotoIds.length || localError || previewError) return;
     // Fix the range and settings before the asynchronous directory chooser.
-    const photoIds=[...exportPhotoIds],batchSettings=clone(settings);
+    await flushSettingsSave();
+    const photoIds=[...exportPhotoIds],batchSettings={...clone(settingsOwner?sharedSettings??settings:settings),export:clone(settings.export)};
     starting = true;
     exportError='';
     try {
@@ -695,7 +851,13 @@
 
   function acceptBatch(incoming: BatchSnapshot) {
     if (batch && incoming.id === batch.id && incoming.revision < batch.revision) return;
+    const finished = batch?.id === incoming.id && batch.status === 'running' && incoming.status === 'completed';
     batch = incoming;
+    if (finished) {
+      exportDone = { count: incoming.items.filter(item => item.status === 'completed').length, failed: incoming.items.filter(item => item.status === 'failed').length };
+      clearTimeout(exportDoneTimer);
+      exportDoneTimer = setTimeout(() => exportDone = null, 15000);
+    }
     if (incoming.status !== 'running') cancelling = false;
   }
 
@@ -730,7 +892,7 @@
         if(agentBusy||importing||choosingPhotos||starting||undoing||pendingImports.length)throw new Error($t('请等待当前操作完成后再使用 Agent'));
         requireAgentWindow();
         agentBusy=true;ownsMutation=true;await tick();
-        clearTimeout(saveTimer);if(!validateLocal(settings))queuedSave=clone(settings);
+        clearTimeout(saveTimer);pendingSave=null;if(!validateLocal(settings))queuedSave={owners:editedOwners(),settings:clone(settings)};
         void drainSave();await agentWait(()=>!saveInFlight&&!queuedSave&&!selectionSaving&&!pendingSelectionSave);
         requireAgentWindow();
       }
@@ -840,6 +1002,15 @@
       </button>
       <button type="button" class:agent-connected={agentConnected} class="icon-button agent-connect-trigger" aria-label={$t('Agent 连接')} title={$t('Agent 连接')} aria-expanded={agentOpen} disabled={!desktop} on:click={()=>agentOpen=true}><Plug size={16}/></button>
       <button type="button" class="icon-button model-config-trigger" aria-label={$t('模型配置')} title={$t('模型配置')} disabled={!desktop} on:click={()=>configureModels()}><SlidersHorizontal size={16}/></button>
+      <div class="language-picker theme-picker">
+        <SunMoon size={16} aria-hidden="true" />
+        <select class="theme-select" aria-label={$t('界面主题')} bind:value={$theme}>
+          <option value="dark" label={$t('深色')}>{$t('深色')}</option>
+          <option value="light" label={$t('浅色')}>{$t('浅色')}</option>
+          <option value="system" label={$t('自动')}>{$t('跟随系统')}</option>
+        </select>
+        <ChevronDown class="language-chevron" size={12} aria-hidden="true" />
+      </div>
       <div class="language-picker">
         <Languages size={16} aria-hidden="true" />
         <select id="interface-language" class="language-select" aria-label={$t("界面语言 / Interface language")} bind:value={$language}>
@@ -875,10 +1046,10 @@
           <div class="empty-state"><LoaderCircle size={25} class="spin" /><p>{$t("正在载入工作区")}</p></div>
         {:else if selectedPhoto}
           {#key selectedPhoto.id}
-            <PhotoViewport photo={selectedPhoto} {preview} picking={pickingColor} loading={previewLoading} oncolor={setFrameColor} onclose={closePicker}>
+            <PhotoViewport photo={selectedPhoto} {preview} picking={pickingColor} loading={previewLoading} oncolor={setFrameColor} onclose={closePicker} markBox={watermarkPreviewVisible?markBox:null} onmarkdrag={dragMark}>
               <svelte:fragment slot="heading"><div class="file-heading"><span title={selectedPhoto.path}>{selectedPhoto.name}</span><span class="source-size">{selectedPhoto.width} × {selectedPhoto.height}</span><button type="button" class="remove-photo" title={$t('从目录中移除照片（Backspace / Delete）')} aria-label={$t(selectedIds.length>1?'移除选中的 {0} 张照片':'移除当前照片',{0:selectedIds.length})} aria-keyshortcuts="Backspace Delete" disabled={isRunning||starting||importing||!selectedIds.length} on:click={()=>photoActions.requestRemoval(selectedIds)}><Trash2 size={15}/><span>{$t(selectedIds.length>1?'移除 {0} 张':'移除照片',{0:selectedIds.length})}</span></button></div></svelte:fragment>
               {#if watermarkPreviewVisible}
-                <WatermarkDetail photo={selectedPhoto} {settings} overview={preview} collapsed={watermarkPreviewCollapsed} oncollapse={collapseWatermarkPreview} onlimits={(value)=>offsetLimits=value}/>
+                <WatermarkDetail photo={selectedPhoto} {settings} overview={preview} collapsed={watermarkPreviewCollapsed} oncollapse={collapseWatermarkPreview} onlimits={(value)=>offsetLimits=value} onbox={(box)=>markBox=box}/>
               {/if}
             </PhotoViewport>
           {/key}
@@ -910,6 +1081,11 @@
         <button type="button" id="inspector-frame" role="tab" aria-controls="frame-panel" aria-selected={inspectorTab==='frame'} tabindex={inspectorTab==='frame'?0:-1} on:click={()=>selectInspector('frame')} on:keydown={inspectorKey}><span class="step-number" aria-hidden="true">01</span>{$t('边框')}</button>
         <button type="button" id="inspector-watermark" role="tab" aria-controls="watermark-panel" aria-selected={inspectorTab==='watermark'} tabindex={inspectorTab==='watermark'?0:-1} on:click={()=>selectInspector('watermark')} on:keydown={inspectorKey}><span class="step-number" aria-hidden="true">02</span>{$t('水印')}</button>
       </div>
+      <div class="settings-scope" role="group" aria-label={$t('设置应用于')}>
+        <button type="button" class:active={!settingsOwner} aria-pressed={!settingsOwner} disabled={!selectedPhoto||scopeBusy||isRunning} on:click={() => setSettingsScope(false)}>{$t('所有照片')}</button>
+        <button type="button" class:active={!!settingsOwner} aria-pressed={!!settingsOwner} disabled={!selectedPhoto||scopeBusy||isRunning} on:click={() => setSettingsScope(true)}>{$t(selectedIds.length>1?'选中的 {0} 张':'仅这张',{0:selectedIds.length})}</button>
+      </div>
+      {#if settingsOwner}<p class="scope-note">{$t('正在编辑单独设置，不影响其他照片')}</p>{:else if ownCount}<p class="scope-note">{$t('{0} 张照片使用单独设置',{0:ownCount})}</p>{/if}
       <div id="frame-panel" class="setting-section inspector-panel" role="tabpanel" tabindex="0" aria-labelledby="inspector-frame" hidden={inspectorTab!=='frame'}>
         <div class="field-title ratio-title"><span class="field-label">{$t('最终比例')}</span><button class="icon-button" disabled={!settings.ratio} on:click={swapRatio} title={$t('交换宽高')} aria-label={$t('交换宽高')}><ArrowLeftRight size={15}/></button></div>
         <div class="ratio-grid" role="group" aria-label={$t('最终比例')}>
@@ -1055,7 +1231,7 @@
         {#each photos as photo (photo.id)}
           {@const job = batch?.items.find((item) => item.photoId === photo.id)}
           <button class:selected={selectedPhotoIds.has(photo.id)} class:active={photo.id===selectedId} class="thumbnail" data-photo-id={photo.id} on:click={event=>selectPhoto(photo.id,event)} on:contextmenu={event=>photoActions.openPhotoMenu(event,photo.id)} aria-label={$t('预览 {0}',{0:photo.name})} aria-pressed={selectedPhotoIds.has(photo.id)} aria-current={photo.id===selectedId?'true':undefined} aria-haspopup="menu" title={photo.name}>
-            {#if photo.thumbnail}<img src={photo.thumbnail} alt="" draggable="false"/>{:else}<FileImage size={22}/>{/if}
+            {#if photo.thumbnail}<img src={photo.thumbnail} alt="" draggable="false"/>{:else}<FileImage size={22}/>{/if}{#if photo.settings}<span class="own-badge" title={$t('单独设置')} aria-label={$t('单独设置')}></span>{/if}
             {#if job?.status==='completed'}<span class="thumbnail-status success"><Check size={10} strokeWidth={3}/></span>{:else if job?.status==='failed'}<span class="thumbnail-status failed"><AlertCircle size={11}/></span>{:else if job?.status==='running'}<span class="thumbnail-status"><LoaderCircle size={11} class="spin"/></span>{/if}
           </button>
         {/each}
@@ -1073,6 +1249,7 @@
       {#if removalUndo.length}<button type="button" class="text-button undo-photo-removal" disabled={undoing||loading||isRunning||starting||importing||agentBusy} aria-keyshortcuts="Meta+Z Control+Z" title={$t('撤销最近一次移除，重启后仍可用（⌘ / Ctrl+Z）')} on:click={undoPhotoRemoval}><RotateCcw size={14}/>{historyAction==='undo'?$t('正在恢复照片…'):$t('撤销移除')}</button>{/if}
       {#if removalRedo.length}<button type="button" class="text-button redo-photo-removal" disabled={undoing||loading||isRunning||starting||importing||agentBusy} aria-keyshortcuts="Meta+Shift+Z Control+Shift+Z" title={$t('重新执行刚撤销的移除（⌘ / Ctrl+Shift+Z）')} on:click={redoPhotoRemoval}><RotateCw size={14}/>{historyAction==='redo'?$t('正在重做移除…'):$t('重做移除')}</button>{/if}
     </div></div>{/if}
+    {#if exportDone}<div class="export-done" role="status"><CheckCircle2 size={15}/><span>{$t('已导出 {0} 张照片',{0:exportDone.count})}{#if exportDone.failed} · {$t('{0} 张失败',{0:exportDone.failed})}{/if}</span><button type="button" class="text-button" on:click={() => batch && revealPath(batch.outputDirectory)}><FolderOpen size={13}/>{$t('在 Finder 中显示')}</button><button type="button" class="icon-button" aria-label={$t('关闭提示')} on:click={() => exportDone = null}><X size={14}/></button></div>{/if}
     <div class="import-feedback" role="status" aria-live="polite" aria-atomic="true">
       {#if importing}<LoaderCircle size={12} class="spin"/><span>{$t('正在导入 {0} 张照片…',{0:importingCount})}{#if pendingImports.length}{' · ' }{$t('另有 {0} 张排队',{0:pendingImports.length})}{/if}</span>
       {:else if pendingImports.length}<span>{$t('已接收 {0} 张照片，载入后导入',{0:pendingImports.length})}</span>
@@ -1082,13 +1259,18 @@
   {#if dragActive}<div class="drop-overlay"><div><ImagePlus size={30} strokeWidth={1.5} /><strong>{$t(dragCount?'松开以添加 {0} 张照片':'松开以添加一组照片',{0:dragCount})}</strong><span>JPG · PNG · HEIC · HEIF</span><span>{$t(importing||loading?'会自动排队，随后逐张导入':'支持多选拖入，原照片保留在原位置')}</span></div></div>{/if}
 </div>
 
-<PhotoLibraryActions bind:this={photoActions} {photos} {selectedIds} canUndo={!!removalUndo.length} onundo={()=>void undoPhotoRemoval()} canRedo={!!removalRedo.length} onredo={()=>void redoPhotoRemoval()} disabled={!desktop||!initialized||loading||isRunning||starting||importing||undoing||agentBusy} selectionDisabled={!desktop||!initialized||loading||starting||importing||pickingColor||undoing||agentBusy} onselectall={selectAllPhotos} onclearselection={clearSelectedPhotos} oncontextselect={selectContextPhoto} onremove={removePhotos} onerror={message=>notices=[...notices,message]}/>
+<PhotoLibraryActions bind:this={photoActions} {photos} {selectedIds} onstep={stepPhoto} canUndo={!!removalUndo.length||!!settingsUndo.length||settingsBaseline!==JSON.stringify(settings)} onundo={undoAny} canRedo={!!removalRedo.length||!!settingsRedo.length} onredo={redoAny} disabled={!desktop||!initialized||loading||isRunning||starting||importing||undoing||agentBusy} selectionDisabled={!desktop||!initialized||loading||starting||importing||pickingColor||undoing||agentBusy} onselectall={selectAllPhotos} onclearselection={clearSelectedPhotos} oncontextselect={selectContextPhoto} onremove={removePhotos} onerror={message=>notices=[...notices,message]}/>
 
 {#if agentOpen}<AgentConnection onclose={()=>agentOpen=false} onstatus={status=>agentConnected=status.enabled}/>{/if}
 
 <dialog bind:this={exportDialog} class="export-review" aria-labelledby="export-title" on:cancel={event=>{if(starting)event.preventDefault();}}>
-  <header><div><h2 id="export-title">{$t('导出照片')}</h2><p class="export-count" aria-live="polite">{$t(exportScope==='selected'?'将导出选中的 {0} 张照片':'将导出全部 {0} 张照片',{0:exportPhotoIds.length})} · {$t('全部照片共用当前设置')}</p></div><button class="icon-button" aria-label={$t('返回编辑')} disabled={starting} on:click={()=>exportDialog.close()}><X size={18}/></button></header>
+  <header><div><h2 id="export-title">{$t('导出照片')}</h2><p class="export-count" aria-live="polite">{$t(exportScope==='selected'?'将导出选中的 {0} 张照片':'将导出全部 {0} 张照片',{0:exportPhotoIds.length})} · {ownCount?$t('{0} 张使用单独设置',{0:ownCount}):$t('全部照片共用当前设置')}</p></div><button class="icon-button" aria-label={$t('返回编辑')} disabled={starting} on:click={()=>exportDialog.close()}><X size={18}/></button></header>
   <div class="export-review-body">
+    <div class="export-targets" role="group" aria-label={$t('导出用途')}>
+      <span class="field-label">{$t('导出用途')}</span>
+      <div>{#each exportTargets as target}<button type="button" class:chosen={activeExportTarget === target.id} aria-pressed={activeExportTarget === target.id} disabled={starting||isRunning} on:click={() => applyExportTarget(target.id)}>{$t(target.name)}</button>{/each}</div>
+      <p class="field-help">{$t('平台用途会同时设置画面比例、输出长边和 JPG 质量')}</p>
+    </div>
     <fieldset class="export-scope" disabled={starting||isRunning}>
       <legend class="field-label">{$t('导出范围')}</legend>
       <label><input type="radio" name="export-scope" value="selected" bind:group={exportScope} disabled={!selectedIds.length}/><span>{$t('选中的照片（{0} 张）',{0:selectedIds.length})}</span></label>
@@ -1097,6 +1279,10 @@
     <label class="field-label" for="export-directory">{$t('保存到')}</label>
     <button type="button" id="export-directory" class="export-directory" on:click={chooseOutputDirectory} disabled={!desktop||isRunning||starting} title={outputDirectory||$t('尚未选择文件夹')}><FolderOpen size={17}/><span>{outputDirectory||$t('尚未选择文件夹')}</span><ChevronDown size={14}/></button>
     <div class="export-format-row"><label><span class="field-label">{$t('文件格式')}</span><select id="export-format" bind:value={settings.export.format}><option value="jpg">JPG</option><option value="png">PNG</option></select></label>{#if settings.export.format==='jpg'}<div><div class="field-title"><label class="field-label" for="jpg-quality">{$t('JPG 质量')}</label><output>{settings.export.jpegQuality}</output></div><input id="jpg-quality" type="range" min="60" max="100" step="1" bind:value={settings.export.jpegQuality}/></div>{/if}</div>
+    <label class="field-label export-name-label" for="export-name">{$t('文件名')}</label>
+    <input id="export-name" class="full-width" maxlength="120" spellcheck="false" bind:value={settings.export.namePattern} disabled={starting||isRunning}/>
+    <p class="field-help export-name-example">{$t('{name} 为原文件名，{index} 为序号')} · {exportNameExample}</p>
+    <label class="export-keep-exif"><input type="checkbox" bind:checked={settings.export.keepCameraInfo} disabled={settings.export.format !== 'jpg'||starting||isRunning}/><span>{$t('保留拍摄参数（相机、镜头、光圈等，不含位置）')}{#if settings.export.format !== 'jpg'}<small> · {$t('仅 JPG')}</small>{/if}</span></label>
     <details class="advanced-watermark export-size-options" bind:open={advancedExport}><summary><ChevronDown size={14}/>{$t('尺寸选项')}</summary>
       <label class="field-label" for="long-edge">{$t('输出长边')}</label><select id="long-edge" value={longEdgeMode} on:change={event=>setLongEdge(event.currentTarget.value)}><option value="original">{$t('保留原始像素')}</option><option value="2560">{$t('最多 2560 px')}</option><option value="3840">{$t('最多 3840 px')}</option><option value="custom">{$t('自定义')}</option></select>
       {#if longEdgeMode==='custom'}<div class="custom-edge"><input aria-label={$t('自定义输出长边')} type="number" min="64" max="32768" step="1" bind:value={customLongEdge} on:input={event=>settings.export.longEdge=event.currentTarget.valueAsNumber}/><span>px</span></div>{/if}<p class="field-help">{$t('按最终画布缩小，不放大照片；统一导出为 sRGB')}</p>

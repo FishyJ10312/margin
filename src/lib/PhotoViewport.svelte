@@ -6,6 +6,17 @@
   import type {Photo,PreviewResult} from './types';
   export let photo:Photo, preview:PreviewResult|null=null,picking=false,loading=false;
   export let oncolor:(hex:string)=>void,onclose:()=>void;
+  /** Watermark rectangle on the full-resolution canvas; null hides the handle. */
+  export let markBox:{x:number;y:number;width:number;height:number}|null=null;
+  /** Drag deltas in full-resolution canvas pixels, relative to where the drag began. */
+  export let onmarkdrag:(dx:number,dy:number,phase:'start'|'move'|'end')=>void=()=>{};
+  let markDrag:{x:number;y:number}|null=null,markShift={x:0,y:0};
+  $: if(markBox&&!markDrag)markShift={x:0,y:0};
+  $: handle=markBox?{left:width/2+panX+(markBox.x+markShift.x-fullW/2)*zoom,top:height/2+panY+(markBox.y+markShift.y-fullH/2)*zoom,w:Math.max(12,markBox.width*zoom),h:Math.max(12,markBox.height*zoom)}:null;
+  function markDown(e:PointerEvent){if(!e.isPrimary||e.button!==0)return;e.preventDefault();e.stopPropagation();(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);markDrag={x:e.clientX,y:e.clientY};markShift={x:0,y:0};onmarkdrag(0,0,'start');}
+  function markMove(e:PointerEvent){if(!markDrag)return;markShift={x:(e.clientX-markDrag.x)/zoom,y:(e.clientY-markDrag.y)/zoom};onmarkdrag(markShift.x,markShift.y,'move');}
+  function markUp(){if(!markDrag)return;markDrag=null;onmarkdrag(markShift.x,markShift.y,'end');}
+  function markKey(e:KeyboardEvent){const step=(e.shiftKey?10:1)/Math.max(zoom,.01);const d:Record<string,[number,number]>={ArrowLeft:[-step,0],ArrowRight:[step,0],ArrowUp:[0,-step],ArrowDown:[0,step]};if(!d[e.key])return;e.preventDefault();e.stopPropagation();onmarkdrag(0,0,'start');onmarkdrag(d[e.key][0],d[e.key][1],'end');}
   let host:HTMLDivElement,image:HTMLImageElement,panSurface:HTMLButtonElement;
   let width=600,height=500,zoom=.1,panX=0,panY=0,fit=true;
   let dragging=false,drag:{x:number;y:number;px:number;py:number}|null=null;
@@ -39,6 +50,7 @@
 <div bind:this={host} class="canvas photo-viewport" class:dragging>
   <img bind:this={image} class="rendered-photo zoom-photo" src={preview?.dataUrl||photo.thumbnail} alt={$t("{0} 的加框预览", {0:photo.name})} on:load={paint}/>
   <button bind:this={panSurface} class="pan-surface" aria-label={$t("照片视图，拖动平移，滚轮缩放，0 适应，1 原始大小")} on:pointerdown={down} on:pointermove={move} on:lostpointercapture={()=>{drag=null;dragging=false;}} on:keydown={key}></button>
+  {#if handle&&!picking}<button type="button" class="mark-handle" class:dragging={!!markDrag} style:left="{handle.left}px" style:top="{handle.top}px" style:width="{handle.w}px" style:height="{handle.h}px" aria-label={$t("拖动调整水印位置，方向键微调")} title={$t("拖动调整水印位置，方向键微调")} on:pointerdown={markDown} on:pointermove={markMove} on:pointerup={markUp} on:lostpointercapture={markUp} on:keydown={markKey}></button>{/if}
   <slot />
   {#if picking&&preview}<ColorSampler {photo} {preview} {image} {oncolor} {onclose}/>{/if}
   {#if loading}<span class="preview-pending">{$t("更新预览")}</span>{/if}
@@ -54,6 +66,8 @@
 .photo-viewport{display:block;position:relative;overflow:hidden;padding:0;isolation:isolate;min-height:100px;touch-action:none;}
 .zoom-photo{position:absolute;top:50%;left:50%;max-width:none;max-height:none;object-fit:fill;pointer-events:none;transform-origin:center;will-change:transform;filter:none;box-shadow:none;transition:none;-webkit-user-select:none;user-select:none;}
 .pan-surface{position:absolute;inset:0;width:100%;height:100%;border:0;background:transparent;cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;}
-.dragging .pan-surface{cursor:grabbing;}.pan-hint{position:absolute;bottom:8px;right:12px;font-size:11px;color:var(--muted);display:flex;align-items:center;gap:5px;pointer-events:none;}
+.dragging .pan-surface{cursor:grabbing;}
+.mark-handle{position:absolute;z-index:1;padding:0;border:1px dashed transparent;border-radius:2px;background:transparent;cursor:move;touch-action:none;}
+.mark-handle:hover,.mark-handle:focus-visible,.mark-handle.dragging{border-color:var(--primary,#f0a23b);background:rgb(240 162 59 / .08);outline:none;}.pan-hint{position:absolute;bottom:8px;right:12px;font-size:11px;color:var(--muted);display:flex;align-items:center;gap:5px;pointer-events:none;}
 @media(max-width:1050px){.zoom-range{display:none;}.viewport-heading{margin-inline-end:4px;}}
 </style>

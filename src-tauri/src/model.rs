@@ -96,7 +96,15 @@ pub struct ExportSettings {
     pub format: String,
     pub jpeg_quality: u8,
     pub long_edge: Option<u32>,
+    /// Output file name without extension. `{name}` is the original file name,
+    /// `{index}` the photo's position in the export (001, 002, …).
+    pub name_pattern: String,
+    /// Copy camera, lens and exposure details into exported JPGs. Location,
+    /// orientation and other metadata are never copied.
+    pub keep_camera_info: bool,
 }
+
+pub const DEFAULT_NAME_PATTERN: &str = "{name}-framed";
 
 impl Default for ExportSettings {
     fn default() -> Self {
@@ -104,6 +112,8 @@ impl Default for ExportSettings {
             format: "jpg".into(),
             jpeg_quality: 95,
             long_edge: None,
+            name_pattern: DEFAULT_NAME_PATTERN.into(),
+            keep_camera_info: false,
         }
     }
 }
