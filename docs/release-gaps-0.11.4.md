@@ -43,11 +43,11 @@ then the first succeeds, the second refuses, the accepted archive remains valid
 and identical, and excluded synthetic `.env` data is absent. Test processes and
 synthetic source trees are owned by the test; no app, account or photo is used.
 
-## Unverified and owner-dependent gates
+## Remaining gates and scoped follow-ups
 
 | Gate | Current evidence / gap | Required next step |
 | --- | --- | --- |
-| Current-version installer | 0.11.4 standalone `.app` copied and launched; earlier DMG checks cover separately named 0.11.3 candidates | Build and verify a version-matched installer in isolation before distributing it |
+| Current-version installer | Passed within the [2026-11-18 isolated DMG acceptance](mac-installer-0.11.4.md): production-identity image mounted/copied/verified; separately built QA-identity DMG copy actually imported, previewed, exported, cancelled/resumed and restarted | Clean-user/quarantine/Gatekeeper and supported-device gates below remain open; the user's installed app was not operated or replaced |
 | Developer ID / notarization / Gatekeeper | Current trial is ad-hoc signed; no notarized 0.11.4 artifact or clean-user Gatekeeper pass | Owner supplies the intended signing access and authorizes the final distribution flow; no paid enrollment here |
 | Fresh user, Intel, minimum macOS | Current hardware acceptance is Apple Silicon; macOS 12 is configured, not device-verified | Decide the supported platforms, then use matching isolated users/devices |
 | Windows | Source/build scripts exist; no current-revision actual-device build/install result | A connected Windows machine and real install/operation checks |

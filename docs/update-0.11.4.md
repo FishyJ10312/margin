@@ -38,3 +38,7 @@ published with the source.
 
 This is a local Mac trial update. Windows still needs actual-device validation;
 public Mac distribution still needs Developer ID signing and notarization.
+
+The subsequent [isolated Mac installer acceptance](mac-installer-0.11.4.md)
+verified version-matched DMGs and an independently identified QA app without
+changing the user's installed version or data.
