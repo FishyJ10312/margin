@@ -4,7 +4,7 @@ Margin 是本机照片边框与水印工具。源码仓库：[FishyJ10312/margin
 
 0.11.4 合并 MCP 安全重试、超时后保留任务锁、窗口冲突复核，以及默认并行测试的资源隔离与读取握手修复。安全重试需要复用相同 `operationId`，仅在同次软件运行内有效。Mac 更新沿用现有应用身份、照片目录、设置与模型授权存储。详见 [本次更新](docs/update-0.11.4.md)。
 
-顶部新增 **Agent 连接**：开启本机 MCP 后，复制 Codex 或通用 MCP 配置即可让 agent 查看照片与预览、调整边框和水印、选择模板、批量导出，以及撤销／重做目录移除。无需用户安装 Node 或 Pi；连接默认关闭，可切换只读。使用时保持 Margin 打开。详见 [Agent 接入说明](docs/agent-mcp-0.11.3.md)。
+通过顶栏的 **Agent 连接**，可以用本机 Codex、Claude Desktop 或 Claude Code 查看照片、调整边框和水印、批量导出。第一次使用可以跟着 [MCP 新手教程](docs/agent-first-run.zh-CN.md) 完成连接和首批导出。开发者可查阅 [工具列表与协议说明](docs/agent-mcp-0.11.3.md)。
 
 0.11.3 修复 HDR PNG 被误当作 SDR、PNG P3／亮度曲线未转换、高位深 HEIC 缺少可靠颜色信息时仍继续处理的问题；未完成的导出临时文件会绑定到任务，恢复时仅清理明确登记的本任务文件。稳定性测量见 `docs/stability-0.11.3.md`。
 
