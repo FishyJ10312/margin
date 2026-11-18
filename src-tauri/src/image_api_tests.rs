@@ -123,6 +123,10 @@ fn chosen_model_reaches_generation_and_png_is_owned_without_credentials() {
     assert!(headers.contains("Bearer test-session-secret"));
     assert_eq!(body["model"], c.model);
     assert_eq!(body["quality"], "high");
+    assert_eq!(
+        body["size"], "1536x1024",
+        "Independent artwork keeps the chosen size"
+    );
     assert_eq!(body["n"], 1);
     assert_eq!(body["background"], "transparent");
     assert_eq!(body["output_format"], "png");
@@ -166,7 +170,17 @@ fn complete_frame_keeps_canvas_and_sends_both_refinement_references_once() {
         height: 1,
         before: Some("data:image/jpeg;base64,eQ==".into()),
         current: None,
-        geometry: None,
+        geometry: Some(crate::art_ai::DesignGeometry {
+            canvas_width: 800,
+            canvas_height: 1000,
+            border_percent: 12.,
+            photo_bounds: crate::model::PixelRect {
+                x: 100,
+                y: 100,
+                width: 800,
+                height: 800,
+            },
+        }),
     };
     let result = tauri::async_runtime::block_on(run_frame(
         &c,
@@ -182,6 +196,10 @@ fn complete_frame_keeps_canvas_and_sends_both_refinement_references_once() {
     thread.join().unwrap();
     assert!(headers.starts_with("POST /v1/images/edits "));
     assert_eq!(body["n"], 1);
+    assert_eq!(
+        body["size"], "1024x1536",
+        "A full frame follows its final portrait canvas"
+    );
     assert_eq!(body["images"].as_array().unwrap().len(), 2);
     assert!(body["prompt"]
         .as_str()

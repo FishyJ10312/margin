@@ -1,4 +1,12 @@
 {
+ "保留当前画幅比例":"Keep current canvas ratio",
+ "画幅 {0} · 边距 {1}%":"Canvas {0} · {1}% padding",
+ "画幅跟随照片 · 边距 {1}%":"Matches photo orientation · {1}% padding",
+ "跟随照片方向":"Follow photo orientation",
+ "半格相机的 18×24 开口，短边各有四枚齿孔，竖片上方和下方保留片边。":"An 18×24 half-frame opening with four perforations on each short edge. Portrait photos keep the film rails above and below.",
+ "单侧走片孔、细绿灰片基与琥珀片号，像保留了画门的电影扫描。":"A single perforated edge, muted gray-green film base and amber markings suggest a scanned cinema gate.",
+ "两侧各五枚齿孔，冷灰片基、银色细标和细密的扫描编号。":"Five perforations on each rail, with a slate film base and fine silver edge numbers.",
+ "暖白相纸托住无齿孔的深色画门，细微不规则黑边模拟手挫底片夹。":"Warm paper around a sprocket-free black opening, with the subtle irregularity of a hand-filed negative carrier.",
   "圆角齿孔、片边微字与细微扫描颗粒，模拟完整底片。": "Rounded sprockets, edge microtype and subtle grain, inspired by a full negative scan.",
   "暖棕片基、琥珀色边缘与完整齿孔，像彩负扫描的留边。": "Warm film base, amber edges and full sprockets, inspired by color-negative scans.",
   "无齿孔的黑色片边、银灰片号与轻微不规则内缘。": "A black rebate without sprockets, silver-gray markings and a slightly irregular inner edge.",

@@ -30,7 +30,7 @@ pub struct BuiltinFrame {
     pub settings: RenderSettings,
     pub thumbnail: String,
 }
-const SPECS: [(&str, &str, &str, &str, &str, &str, [&str; 3]); 30] = [
+const SPECS: [(&str, &str, &str, &str, &str, &str, [&str; 3]); 34] = [
     (
         "gallery",
         "摄影画廊",
@@ -165,6 +165,42 @@ const SPECS: [(&str, &str, &str, &str, &str, &str, [&str; 3]); 30] = [
         "轻微纸张颗粒、较宽的下沿与干净相纸边，完整保留照片。",
         "#D8D6CE",
         ["#8F8B7E", "#F8F5E9", "#5F6057"],
+    ),
+    (
+        "scan-half",
+        "35mm 半格扫描",
+        "35mm Half-frame",
+        "film",
+        "半格相机的 18×24 开口，短边各有四枚齿孔，竖片上方和下方保留片边。",
+        "#29231F",
+        ["#C8A57C", "#090707", "#774B34"],
+    ),
+    (
+        "scan-super16",
+        "Super 16 单侧扫描",
+        "Super 16 Rebate",
+        "film",
+        "单侧走片孔、细绿灰片基与琥珀片号，像保留了画门的电影扫描。",
+        "#272C25",
+        ["#D2B687", "#0C1110", "#55523A"],
+    ),
+    (
+        "scan-65mm",
+        "65mm 五齿孔扫描",
+        "65mm Five-perf",
+        "film",
+        "两侧各五枚齿孔，冷灰片基、银色细标和细密的扫描编号。",
+        "#30383B",
+        ["#D1C5AA", "#101719", "#6B7979"],
+    ),
+    (
+        "scan-carrier",
+        "放大机手挫黑边",
+        "Hand-filed Darkroom Edge",
+        "film",
+        "暖白相纸托住无齿孔的深色画门，细微不规则黑边模拟手挫底片夹。",
+        "#E2DBCA",
+        ["#897E69", "#BAB09A", "#171A17"],
     ),
     (
         "color-band",
@@ -328,7 +364,12 @@ pub fn validate(r: &DesignRecipe) -> Result<(), String> {
 pub fn settings(id: &str) -> Option<RenderSettings> {
     let s = SPECS.iter().find(|s| s.0 == id)?;
     let mut v = RenderSettings::default();
-    v.border_percent = if crate::film::is_scan(id) { 12. } else { 18. };
+    v.border_percent = match id {
+        "scan-65mm" | "scan-carrier" => 15.,
+        "scan-half" | "scan-super16" => 13.,
+        id if crate::film::is_scan(id) => 12.,
+        _ => 18.,
+    };
     v.frame_color = s.5.into();
     v.artwork = Some(ArtScene {
         design: Some(DesignRecipe {

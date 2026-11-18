@@ -4,13 +4,14 @@
  import { invoke } from '@tauri-apps/api/core';
  import ArtDirection from './ArtDirection.svelte';
  import {defaultImageConfig,defaultFrameDesign,piProviders} from './types';
+ import {isOpenAiImageApi} from './image-api-config';
  import { X, LoaderCircle, WandSparkles, RotateCcw } from '@lucide/svelte';
 
  import type { AiConfig, AiPhoto, AiState, FrameSuggestion, Photo, RenderSettings, PreviewResult,GeneratedArt,ChatGptDiagnostic,ChatGptState,ChatGptModel,PiCatalog } from './types';
  export let photo: Photo;
  export let initialConfig:AiConfig|null=null;
- export let onconfigure:(config:AiConfig)=>void;
- export let initialMode:'design'|'refine'|'image'='image';
+ export let onconfigure:(config:AiConfig,target:'analysis'|'image')=>void;
+ export let initialMode:'design'|'refine'|'image'='design';
  let mode=initialMode;
  export let imageTarget:'frame'|'sticker'='frame';
  $: imageTask=mode==='image'||mode==='refine'&&!!baseSettings.artwork?.frameImage;
@@ -30,12 +31,16 @@
  const origin=(url:string)=>{try{return new URL(url).origin;}catch{return '';}};
  $: if(!loading&&apiKey&&apiOrigin!==origin(config.baseUrl)){apiKey='';apiOrigin='';}
  $: if(!loading&&imageApiKey&&imageApiOrigin!==origin(config.image.baseUrl)){imageApiKey='';imageApiOrigin='';}
+ $: missingImageKey = imageTask && config.image.provider === 'openai' && isOpenAiImageApi(config.image.baseUrl) &&
+   (!imageApiKey.trim() || imageApiOrigin !== origin(config.image.baseUrl));
  let prepared: AiPhoto | null = null;
  let busy = false, loading = true, consent = false,alive=true;
  let cancelRequested=false,needsPreparation=false;
  let chatgptReady=false,chatgptLabel='';
  let connectionProblem='';
  let piReady=false;
+ $: generationReady = imageTask ? !missingImageKey
+   : config.provider === 'chatgpt' ? chatgptReady : config.provider === 'pi' ? piReady : true;
  $: connectionName=config.provider==='pi'?'Pi · '+(piProviders.find(p=>p.id===(config.piProvider||'openai'))?.name||config.piProvider):config.provider==='chatgpt'?'ChatGPT':config.provider==='api'?$t('兼容视觉 API'):'Codex';
  let chatgptDiagnostic:ChatGptDiagnostic|null=null;
  $: previewAspect=prepared?.geometry?`${prepared.geometry.canvasWidth} / ${prepared.geometry.canvasHeight}`:baseSettings.ratio?`${baseSettings.ratio.width} / ${baseSettings.ratio.height}`:`${photo.width} / ${photo.height}`;
@@ -73,10 +78,10 @@
   }catch(error){if(alive)problem=String(error);}finally{if(alive)loading=false;}
  }
  function syncBrief(){config.frameDesign.notes=creativeBrief;config.styleDirection=creativeBrief.trim()||$t('根据照片的内容、构图与色彩自主设计，保持清晰的视觉层次与适当留白');}
- function configure(){syncBrief();onconfigure(config);}
+ function configure(){syncBrief();onconfigure(config,imageTask?'image':'analysis');}
  async function changeGeneration(next:string){
   if(busy||loading)return;syncBrief();mode=next==='design'?'design':'image';initialMode=mode;imageTarget=next==='sticker'?'sticker':'frame';
-  consent=false;reference=false;refined=false;suggestions=[];previews={};await initialize(config);await tick();if(alive)document.getElementById('style-direction')?.focus();
+  consent=false;reference=false;refined=false;suggestions=[];previews={};await initialize(config);await tick();if(alive)document.getElementById('generation-method')?.focus();
  }
  onDestroy(()=>{alive=false;if(busy)void invoke('cancel_art_frames');});
  async function cancelGeneration(){
@@ -84,7 +89,7 @@
   await invoke('cancel_art_frames');
  }
  async function generate() {
-  if (!prepared || !consent || busy || !imageTask&&(config.provider==='chatgpt'&&!chatgptReady||config.provider==='pi'&&!piReady)) return;
+  if (!prepared || !consent || busy || !generationReady) return;
   busy=true;cancelRequested=false; problem='';chatgptDiagnostic=null; suggestions=[];previews={};
   try {
    if(needsPreparation){
@@ -121,19 +126,36 @@
   {#if mode==='refine'&&prepared?.before&&!suggestions.length}<div class="refine-before"><img src={prepared.before} alt={$t('发送给模型的当前配框预览，不含水印')}/><p>{$t(imageTask?'根据当前边框重新绘制图案形状、大小与布局；本轮会使用一次生图额度。':'可调整线条形状、图案大小与位置，重新安排布局。PNG 素材可移动、缩放和翻转。')}</p></div>{/if}
   <form aria-label={$t("艺术边框生成设置")} on:submit|preventDefault={generate}>
    <fieldset disabled={busy||refined}><legend class="sr-only">{$t("艺术边框生成设置")}</legend>
+    {#if mode !== 'refine'}
+     <div class="generation-method">
+      <label class="field-label" for="generation-method">{$t('生成方式')}</label>
+      <select id="generation-method" value={generationKind} aria-describedby="generation-method-help" on:change={event=>changeGeneration(event.currentTarget.value)}>
+       <option value="design">{$t('分析配框 · 可编辑')}</option>
+       <option value="image">{$t('完整插画边框 · 生图')}</option>
+       <option value="sticker">{$t('独立装饰素材 · 生图')}</option>
+      </select>
+      <p id="generation-method-help" class="field-help">{$t(imageTask?'由下方生图服务绘制图片，Margin 将图案合成到照片留白处。':'根据照片生成可编辑的配框方案，Margin 在本机绘制线条和图案。')}</p>
+     </div>
+    {/if}
     <label class="field-label" for="style-direction">{$t(mode==='refine'?'这次想怎么调整？':'你的想法（可选）')}</label>
     <textarea id="style-direction" class="full-width" name="design-brief" rows="3" maxlength="1500" bind:value={creativeBrief} on:input={()=>consent=false} placeholder={$t(mode==='refine'?'例如：把主装饰移到左下，缩小图案，让交织线更舒展':'可以留空，让 AI 根据照片设计；也可以写下元素、气氛或不想要的内容')} aria-describedby="brief-help"></textarea>
     <p id="brief-help" class="field-help">{$t('无需先选风格。你的描述优先，未指定的部分交给 AI。')}</p>
     <details class="generation-options"><summary>{$t('更多选项')}</summary><div class="generation-fields">
-     {#if mode!=='refine'}<label class="field-label" for="generation-method">{$t('生成方式')}</label><select id="generation-method" value={generationKind} on:change={event=>changeGeneration(event.currentTarget.value)}><option value="image">{$t('完整边框')}</option><option value="design">{$t('可编辑线条与图形')}</option><option value="sticker">{$t('独立装饰素材')}</option></select>{/if}
      {#if completeFrame}<ArtDirection bind:value={config.frameDesign} oninvalidate={()=>consent=false}/>{/if}
      {#if mode==='design'||completeFrame}<label class="field-label" for="design-density">{$t('装饰密度')}</label><select id="design-density" bind:value={config.designDensity} on:change={()=>consent=false}><option value="auto">{$t('由 AI 根据照片决定')}</option><option value="simple">{$t('简约 · 少量点缀')}</option><option value="balanced">{$t('适中 · 线条与图案')}</option><option value="rich">{$t('丰富 · 更多交织与插画')}</option></select>{/if}
      {#if imageTask&&!completeFrame}<label class="model-consent"><input type="checkbox" bind:checked={reference} on:change={()=>consent=false}/><span>{$t('将上方照片作为风格参考（可选，默认不发送）')}</span></label>{/if}
     </div></details>
-    <div class="connection-summary"><div><strong>{imageTask?(config.image.provider==='codex'?'Codex':config.image.model):connectionName}</strong><small>{$t(imageTask?'图像生成':config.model||'使用默认模型')}</small></div><button type="button" class="text-button" disabled={busy} on:click={configure}>{$t('更换模型')}</button></div>
+    <div class="connection-summary">
+     <div>
+      <strong>{imageTask?(config.image.provider==='codex'?$t('本机 Codex'):'GPT Image API'):connectionName}</strong>
+      <small>{imageTask?(config.image.provider==='codex'?$t('内置生图 · 使用 Codex 登录'):config.image.model):$t(config.model||'使用默认模型')}</small>
+     </div>
+     <button type="button" class="text-button" disabled={busy} aria-describedby={missingImageKey?'generation-setup':undefined} on:click={configure}>{$t('更换模型')}</button>
+    </div>
+    {#if missingImageKey}<p id="generation-setup" class="field-help" role="status">{$t('GPT Image API 需要图像 API Key。可在更换模型中选择本机 Codex 生图，或切回分析配框。')}</p>{/if}
     {#if !imageTask&&(config.provider==='pi'&&!piReady||config.provider==='chatgpt'&&!chatgptReady)}<p class="field-help">{$t('请在模型配置中连接账户并选择可用模型')}</p>{/if}
-    <label class="model-consent"><input type="checkbox" bind:checked={consent}/><span>{completeFrame?$t(mode==='refine'?'同意发送照片与当前边框缩略图，生成一幅精修边框并使用 {0} 的生图额度':'同意发送这张照片的缩略图，生成一幅艺术边框并使用 {0} 的生图额度',{0:config.image.provider==='codex'?'Codex':config.image.model+' · '+config.image.baseUrl}):imageTask&&config.image.provider==='openai'?$t('同意向 {0} 发送设计方向{1}，使用 {2} 生成一张透明图片并消耗该 API 额度',{0:config.image.baseUrl,1:reference?$t('与参考缩略图'):'',2:config.image.model}):imageTask?$t(reference?'同意发送方向与参考缩略图，生成一张图片并使用 Codex 额度':'同意只发送设计方向，生成一张图片并使用 Codex 额度'):config.provider==='pi'?$t(mode==='refine'?'同意通过 {0} 发送原图与配框缩略图，使用 {1} 调用 {2} 精修一轮':'同意通过 {0} 发送此缩略图，使用 {1} 调用 {2} 分析配框',{0:connectionName,1:$t(piProviders.find(p=>p.id===(config.piProvider||'openai'))?.billing||'订阅用量'),2:config.model}):config.provider==='chatgpt'?$t(mode==='refine'?'同意向 OpenAI 发送原图与配框缩略图，使用 {0} 的 ChatGPT 授权用量调用 {1} 精修一轮':'同意向 OpenAI 发送此缩略图，使用 {0} 的 ChatGPT 授权用量调用 {1} 分析配框',{0:chatgptLabel||$t('当前账户'),1:config.model||$t('所选模型')}):mode==='refine'?$t('同意发送原图缩略图与当前配框预览，调用模型一轮并使用所选入口的额度'):config.provider==='codex'?$t("同意将这张缩略图交给当前登录的 Codex 处理，并使用其额度"):$t("同意向 {0} 发送这张缩略图，并使用我的 API 额度", {0:config.baseUrl || '所填接口'})}</span></label>
-    <button class="button primary full-width" type="submit" disabled={!consent || !prepared || busy||refined||!imageTask&&(config.provider==='chatgpt'&&!chatgptReady||config.provider==='pi'&&!piReady)}><WandSparkles size={15} />{$t(mode==='refine'?'精修一次':completeFrame?'生成边框':imageTask?'生成装饰素材':'生成三套边框建议')}</button>
+    <label class="model-consent"><input type="checkbox" bind:checked={consent} disabled={!generationReady}/><span>{completeFrame?$t(mode==='refine'?'同意发送照片与当前边框缩略图，生成一幅精修边框并使用 {0} 的生图额度':'同意发送这张照片的缩略图，生成一幅艺术边框并使用 {0} 的生图额度',{0:config.image.provider==='codex'?'Codex':config.image.model+' · '+config.image.baseUrl}):imageTask&&config.image.provider==='openai'?$t('同意向 {0} 发送设计方向{1}，使用 {2} 生成一张透明图片并消耗该 API 额度',{0:config.image.baseUrl,1:reference?$t('与参考缩略图'):'',2:config.image.model}):imageTask?$t(reference?'同意发送方向与参考缩略图，生成一张图片并使用 Codex 额度':'同意只发送设计方向，生成一张图片并使用 Codex 额度'):config.provider==='pi'?$t(mode==='refine'?'同意通过 {0} 发送原图与配框缩略图，使用 {1} 调用 {2} 精修一轮':'同意通过 {0} 发送此缩略图，使用 {1} 调用 {2} 分析配框',{0:connectionName,1:$t(piProviders.find(p=>p.id===(config.piProvider||'openai'))?.billing||'订阅用量'),2:config.model}):config.provider==='chatgpt'?$t(mode==='refine'?'同意向 OpenAI 发送原图与配框缩略图，使用 {0} 的 ChatGPT 授权用量调用 {1} 精修一轮':'同意向 OpenAI 发送此缩略图，使用 {0} 的 ChatGPT 授权用量调用 {1} 分析配框',{0:chatgptLabel||$t('当前账户'),1:config.model||$t('所选模型')}):mode==='refine'?$t('同意发送原图缩略图与当前配框预览，调用模型一轮并使用所选入口的额度'):config.provider==='codex'?$t("同意将这张缩略图交给当前登录的 Codex 处理，并使用其额度"):$t("同意向 {0} 发送这张缩略图，并使用我的 API 额度", {0:config.baseUrl || '所填接口'})}</span></label>
+    <button class="button primary full-width" type="submit" disabled={!consent||!prepared||busy||refined||!generationReady}><WandSparkles size={15} />{$t(mode==='refine'?'精修一次':completeFrame?'生成边框':imageTask?'生成装饰素材':'生成三套边框建议')}</button>
    </fieldset>
   </form>
   {/if}
@@ -150,6 +172,8 @@
 </dialog>
 
 <style>
+.generation-method{display:grid;gap:5px;margin-block:0 16px;}
+.generation-method select{width:100%;}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0;}
 .model-dialog[open]{display:grid;grid-template-rows:auto minmax(0,1fr) auto;overflow:hidden;}.model-dialog>.model-body{min-height:0;max-height:none;overscroll-behavior:contain;}
 .model-body{container-type:inline-size;}.art-suggestions.complete-result article{grid-template-columns:1fr;}.art-suggestions.complete-result .art-image img{max-height:440px;}.art-suggestions.refine-result article{grid-template-columns:1fr;}.refine-comparison{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-block:18px;}.refine-comparison figure{margin:0;min-width:0;}.refine-comparison figcaption{font-size:12px;color:var(--muted);margin-block-end:8px;}.refine-comparison img{display:block;width:100%;max-height:360px;object-fit:contain;background:var(--surface-soft);border-radius:5px;}.comparison-loading{display:grid;place-content:center;gap:8px;min-height:150px;font-size:12px;color:var(--muted);}@container(max-width:420px){.refine-comparison{grid-template-columns:minmax(0,1fr);}}

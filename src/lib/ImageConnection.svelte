@@ -3,6 +3,7 @@
  import {onDestroy} from 'svelte';
  import {Eye,EyeOff,RefreshCw} from '@lucide/svelte';
  import {t} from './i18n';
+ import {isOpenAiImageApi} from './image-api-config';
  import type {ImageConfig} from './types';
  export let value:ImageConfig;
  export let apiKey='';
@@ -50,7 +51,7 @@
   <input id="image-base-url" name="image-base-url" class="full-width" type="url" required maxlength="2048" bind:value={value.baseUrl} readonly={listing} autocapitalize="none" autocorrect="off" spellcheck="false" aria-describedby="image-base-help" on:input={()=>{remoteModels=null;changed();}}/>
   <p id="image-base-help" class="field-help">{$t('默认 OpenAI 官方地址；兼容服务需支持 Images API 和透明 PNG。')}</p>
   <label class="field-label model-field" for="image-api-key">API Key</label>
-  <div class="image-key"><input id="image-api-key" name="image-api-key" class="full-width" type={reveal?'text':'password'} bind:value={apiKey} required={origin(value.baseUrl)==='https://api.openai.com'} readonly={listing} autocomplete="new-password" autocapitalize="none" autocorrect="off" spellcheck="false" aria-describedby="image-key-help" on:input={()=>{keyOrigin=origin(value.baseUrl);changed();}}/><button type="button" class="icon-button" aria-pressed={reveal} aria-label={$t(reveal?'隐藏 API Key':'显示 API Key')} on:click={()=>reveal=!reveal}>{#if reveal}<EyeOff size={15}/>{:else}<Eye size={15}/>{/if}</button></div>
+  <div class="image-key"><input id="image-api-key" name="image-api-key" class="full-width" type={reveal?'text':'password'} bind:value={apiKey} required={isOpenAiImageApi(value.baseUrl)} readonly={listing} autocomplete="new-password" autocapitalize="none" autocorrect="off" spellcheck="false" aria-describedby="image-key-help" on:input={()=>{keyOrigin=origin(value.baseUrl);changed();}}/><button type="button" class="icon-button" aria-pressed={reveal} aria-label={$t(reveal?'隐藏 API Key':'显示 API Key')} on:click={()=>reveal=!reveal}>{#if reveal}<EyeOff size={15}/>{:else}<Eye size={15}/>{/if}</button></div>
   <p id="image-key-help" class="field-help">{$t('只保留在本次软件会话内，不写入设置或模板；OpenAI 官方接口必填。')}</p>
   {#if apiKey}<button type="button" class="text-button" disabled={listing} on:click={()=>{apiKey='';changed();}}>{$t('清除 Key')}</button>{/if}
   <div class="field-title model-field"><label class="field-label" for="image-model">{$t('图像模型')}</label><button type="button" class="text-button" disabled={listing} on:click={loadModels}><RefreshCw size={12} class={listing?'spin':''}/>{$t(listing?'读取中…':'读取可用模型')}</button></div>
@@ -62,6 +63,7 @@
   {#if status}<p class="field-help" role="status">{status}</p>{/if}
   {#if problem}<p class="field-error" role="alert">{$t(problem)}</p>{/if}
   <div class="image-options"><div><label class="field-label" for="image-quality">{$t('生成质量')}</label><select id="image-quality" name="image-quality" bind:value={value.quality} on:change={changed}><option value="low">{$t('低 · 更快')}</option><option value="medium">{$t('中 · 均衡')}</option><option value="high">{$t('高 · 更多细节')}</option></select></div><div><label class="field-label" for="image-size">{$t('素材画布')}</label><select id="image-size" name="image-size" bind:value={value.size} on:change={changed}><option value="1024x1024">1024 × 1024</option><option value="1536x1024">1536 × 1024</option><option value="1024x1536">1024 × 1536</option></select></div></div>
+  <p class="field-help">{$t('完整插画边框自动跟随最终画幅。这里的尺寸用于独立装饰素材。')}</p>
  {/if}
 </section>
 <style>

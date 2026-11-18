@@ -6,6 +6,8 @@ Margin 是本机照片边框与水印工具。源码仓库：[FishyJ10312/margin
 
 通过顶栏的 **Agent 连接**，可以用本机 Codex、Claude Desktop 或 Claude Code 查看照片、调整边框和水印、批量导出。第一次使用可以跟着 [MCP 新手教程](docs/agent-first-run.zh-CN.md) 完成连接和首批导出。开发者可查阅 [工具列表与协议说明](docs/agent-mcp-0.11.3.md)。
 
+要用自己的 ChatGPT 订阅做可编辑的分析配框，或用 Codex 和 GPT Image API 绘制完整插画，见 [模型配置与胶片模板教程](docs/model-routing.zh-CN.md)。
+
 0.11.3 修复 HDR PNG 被误当作 SDR、PNG P3／亮度曲线未转换、高位深 HEIC 缺少可靠颜色信息时仍继续处理的问题；未完成的导出临时文件会绑定到任务，恢复时仅清理明确登记的本任务文件。稳定性测量见 `docs/stability-0.11.3.md`。
 
 0.11.3 的后续修订合并每张导出开始时的重复队列记录，保留中断恢复能力；已补离线界面回归、有限次数的导出对照与原生取消／继续导出检查。详见 [持续验收记录](docs/active-acceptance-0.11.3.md)。该版本包含多选、持久化撤销／重做和 MCP；Windows 仍需实机验收。

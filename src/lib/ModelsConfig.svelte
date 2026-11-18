@@ -9,6 +9,7 @@
  import {defaultAiConfig,defaultImageConfig,piProviders,type AiConfig,type AiState,type PiRuntimeInfo} from './types';
  import {t,language} from './i18n';
  export let initialConfig:AiConfig|null=null;
+ export let target: 'analysis' | 'image' = 'analysis';
  export let apiKey='';export let apiOrigin='';export let imageApiKey='';export let imageApiOrigin='';
  export let onclose:()=>void;
  export let onsaved:(config:AiConfig)=>void;
@@ -25,7 +26,18 @@
  $: activeAnalysis=saved.provider==='pi'?(saved.piProvider==='openai'?'ChatGPT':(piProviders.find(p=>p.id===saved.piProvider)?.name||saved.piProvider)):saved.provider==='chatgpt'?'ChatGPT':saved.provider==='api'?$t('兼容视觉 API'):'Codex';
  onMount(()=>{dialog.showModal();void initialize();});
  onDestroy(()=>{alive=false;});
- async function initialize(){try{state=await invoke<AiState>('get_ai_state');if(!alive)return;const base=initialConfig||state.config;draft={...defaultAiConfig,...base,image:{...defaultImageConfig,...base.image}};if(draft.provider==='pi'&&(draft.piProvider||'openai')==='openai')draft.provider='chatgpt';saved=structuredClone(draft);select('chatgpt');}catch(e){problem=String(e);}finally{if(alive)loading=false;}}
+ async function initialize() {
+  try {
+   state = await invoke<AiState>('get_ai_state');
+   if (!alive) return;
+   const base = initialConfig || state.config;
+   draft = { ...defaultAiConfig, ...base, image: { ...defaultImageConfig, ...base.image } };
+   if (draft.provider === 'pi' && (draft.piProvider || 'openai') === 'openai') draft.provider = 'chatgpt';
+   saved = structuredClone(draft);
+   select(target === 'image' ? 'image' : draft.provider === 'pi' ? 'pi:' + draft.piProvider : draft.provider);
+  } catch (error) { problem = String(error); }
+  finally { if (alive) loading = false; }
+ }
  function select(value:string){if(busy||saving)return;pane=value;ready=false;notice='';problem='';model=(value==='pi:'+draft.piProvider&&draft.provider==='pi'||value===draft.provider)?draft.model:'';if(value.startsWith('pi:')&&!runtime&&!runtimeLoading)void loadPi();}
  async function loadPi(){runtimeLoading=true;try{const result=await invoke<PiRuntimeInfo>('get_pi_runtime',{path:draft.piPath||null});if(alive)runtime=result;}catch(e){if(alive)problem=String(e);}finally{if(alive)runtimeLoading=false;}}
  async function choosePi(){const path=await open({title:$t('选择 Pi 程序'),multiple:false});if(typeof path!=='string')return;draft.piPath=path;await loadPi();}
@@ -58,7 +70,7 @@
    </details>
   </nav>
   <div class="models-inspector">
-   <div class="model-assignments"><span>{$t('照片分析')} <strong>{activeAnalysis}</strong>{#if saved.model}<small>{saved.model}</small>{/if}</span><span>{$t('手绘生图')} <strong>{saved.image.provider==='codex'?'Codex':'GPT Image API'}</strong></span></div>
+   <div class="model-assignments"><span>{$t('分析配框')} <strong>{activeAnalysis}</strong>{#if saved.model}<small>{saved.model}</small>{/if}</span><span>{$t('完整边框与装饰素材')} <strong>{saved.image.provider==='codex'?'Codex':'GPT Image API'}</strong>{#if saved.image.provider==='openai'}<small>{saved.image.model}</small>{/if}</span></div>
    <form id="model-config-form" method="post" aria-labelledby="model-connection-title" on:submit|preventDefault={save}>
     <h3 id="model-connection-title">{$t(title)}</h3>
     {#if selectedPi}
@@ -80,7 +92,7 @@
      <label class="field-label model-field" for="configured-api-key">API Key</label><input id="configured-api-key" name="configured-api-key" class="full-width" type="password" bind:value={apiKey} autocomplete="new-password" spellcheck="false" on:input={()=>apiOrigin=origin(draft.baseUrl)}/>
      <p class="field-help">{$t('Key 只在本次软件会话内保留，不进入模型配置文件或模板。')}</p>
     {:else}
-     <p class="field-help">{$t('手绘生图与照片分析分别配置。默认继续使用本机 Codex。')}</p>
+     <p class="field-help">{$t('完整边框与装饰素材使用此处的生图服务。用 ChatGPT 登录后，可以在分析配框里生成可编辑的设计。')}</p>
      <ImageConnection bind:value={draft.image} bind:apiKey={imageApiKey} bind:keyOrigin={imageApiOrigin} recommendedModels={state?.imageModels||[]} codexPath={draft.codexPath||state?.codexPath||null} loggedIn={state?.codexLoggedIn||false} onchoose={chooseCodex} onreset={()=>draft.codexPath=null} oninvalidate={()=>notice=''}/>
     {/if}
    </form>

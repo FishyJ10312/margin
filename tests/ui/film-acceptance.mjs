@@ -2,21 +2,34 @@
 import assert from 'node:assert/strict';
 const task=await taskSpace('Liubai film borders 0.9.1');
 const page=task.page('p1');
-await page.goto('http://127.0.0.1:1420/tests/ui/app.html');
+await page.goto('http://127.0.0.1:1420/tests/ui/app.html?portrait-photo');
 await page.waitForSelector('.quick-templates-heading button:not([disabled])');
 await page.selectOption('.language-select','en');
 await page.click('.quick-templates-heading button');
 await page.waitForSelector('.style-card');
 await page.click("loc=role:button[name='Film']");
-await page.waitForFunction(()=>document.querySelectorAll('.style-card').length===12);
+await page.waitForFunction(()=>document.querySelectorAll('.style-card').length===16);
 console.log((await page.snapshot({scope:'full_page'})).slice(-2200));
 const ids=await page.evaluate(()=>[...document.querySelectorAll('[name=frame-choice]')].map(x=>x.value));
-assert.equal(new Set(ids).size,12);
+assert.equal(new Set(ids).size,16);
 for(const id of ids){
  await page.focus('input[value="'+id+'"]');await page.press('input[value="'+id+'"]','Space');
  await page.waitForFunction(()=>document.querySelector('.preview-image')?.getAttribute('aria-busy')==='false');
 }
 assert.equal(await page.evaluate(()=>document.querySelector('.template-adjustments').open),false);
+await page.focus('input[value="scan-half"]');
+await page.press('input[value="scan-half"]','Space');
+await page.waitForFunction(()=>{
+ const s=window.__qa.requests.filter(x=>x.cmd==='get_preview').at(-1)?.args.settings;
+ return s?.artwork?.design?.id==='scan-half'&&s.ratio?.width===1&&s.ratio?.height===1&&s.borderPercent===13;
+});
+await page.click("loc=role:button[name='Follow photo orientation']");
+await page.waitForFunction(()=>{
+ const s=window.__qa.requests.filter(x=>x.cmd==='get_preview').at(-1)?.args.settings;
+ return s?.artwork?.design?.id==='scan-half'&&s.ratio===null&&s.borderPercent===13;
+});
+assert.match(await page.evaluate(()=>document.querySelector('.film-layout').textContent),/Matches photo orientation/);
+console.log('PASS: portrait keeps an explicit square canvas until Follow photo orientation is chosen; scan padding fits the format.');
 await page.focus('input[value="scan-35mm"]');await page.press('input[value="scan-35mm"]','Space');
 await page.waitForFunction(()=>document.querySelector('.preview-image')?.getAttribute('aria-busy')==='false');
 await page.click('.template-adjustments > summary');
@@ -43,4 +56,5 @@ await page.click('.template-adjustments > summary');
 assert.equal(await page.evaluate(()=>[...document.querySelectorAll('.template-adjustments label')].some(x=>x.textContent==='Film edge labels')),false);
 assert.equal(await page.evaluate(()=>!!document.querySelector('#film-texture')),true);
 assert.equal(await page.evaluate(()=>window.__qa.requests.some(x=>/^generate_/.test(x.cmd))),false);
-console.log('PASS: twelve film choices; labels and grain update preview, apply and persist in a template; instant paper has no irrelevant label switch.');
+console.log('PASS: sixteen film choices; labels and grain update preview, apply and persist in a template; instant paper has no irrelevant label switch.');
+await task.finish({keep:[]});

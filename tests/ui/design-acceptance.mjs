@@ -13,7 +13,10 @@ async function openAI(query=''){
  await page.waitForSelector('#style-direction',{state:'visible'});
 }
 await openAI('?legacy-style');
-assert.deepEqual(await page.evaluate(()=>({cards:document.querySelectorAll('[name="art-look"]').length,tabs:document.querySelectorAll('.creative-tabs,.image-target').length,advanced:document.querySelector('.generation-options').open,brief:document.querySelector('#style-direction').value})),{cards:0,tabs:0,advanced:false,brief:''});
+assert.deepEqual(await page.evaluate(()=>({cards:document.querySelectorAll('[name="art-look"]').length,tabs:document.querySelectorAll('.creative-tabs,.image-target').length,advanced:document.querySelector('.generation-options').open,brief:document.querySelector('#style-direction').value})),{cards:0,tabs:0,advanced:false,brief:'Ocean line art'});
+await page.selectOption('#generation-method','image');
+await page.waitForFunction(()=>document.querySelector('#generation-method')?.value==='image');
+await page.fill('#style-direction','');
 assert.equal((await modelCalls()).length,0,'Opening the AI dialog must not consume model usage');
 assert.equal(await page.evaluate(()=>document.querySelector('.model-dialog [type=submit]').disabled),true);
 await page.click('.model-dialog form > fieldset > .model-consent input');
@@ -46,7 +49,6 @@ console.log('PASS: photo-led defaults, empty brief, legacy migration, optional c
 
 await openAI();
 await page.fill('#style-direction','Keep this idea while changing models');
-await page.click('.generation-options > summary');
 await page.selectOption('#generation-method','sticker');
 await page.waitForFunction(()=>document.querySelector('#generation-method')?.value==='sticker'&&!document.querySelector('.model-loading'));
 assert.equal(await page.evaluate(()=>document.querySelector('#style-direction').value),'Keep this idea while changing models');
@@ -60,8 +62,7 @@ assert.equal((await modelCalls()).length,0);
 console.log('PASS: changing model configuration preserves the brief and generation method without generating.');
 
 await openAI('?connected-chatgpt');
-await page.click('.generation-options > summary');
-await page.selectOption('#generation-method','design');
+assert.equal(await page.evaluate(()=>document.querySelector('#generation-method').value),'design');
 await page.waitForSelector('.model-dialog form > fieldset > .model-consent input');
 await page.click('.model-dialog form > fieldset > .model-consent input');
 await page.waitForFunction(()=>!document.querySelector('.model-dialog [type=submit]').disabled);
@@ -75,9 +76,9 @@ await page.waitForSelector('.quick-templates-heading button:not([disabled])');
 await page.click('.quick-templates-heading button');
 await page.waitForSelector('.style-card');
 await page.click("loc=role:button[name='Film']");
-await page.waitForFunction(()=>document.querySelectorAll('.style-card').length===12&&!document.querySelector('.style-preview [aria-busy=true]'));
+await page.waitForFunction(()=>document.querySelectorAll('.style-card').length===16&&!document.querySelector('.style-preview [aria-busy=true]'));
 assert.equal(await page.evaluate(()=>document.querySelector('.template-adjustments').open),false);
-assert.deepEqual(await page.evaluate(()=>[...document.querySelectorAll('.style-card strong')].map(x=>x.textContent)),['Film Edge','Amber Negative','Warm Photo Paper','35mm Full Scan','Warm Color Negative','Silver Negative','120 Medium Format','16mm Cine Scan','Super 8 Scan','Darkroom Contact','Cardboard Slide','Instant Photo Paper']);
+assert.deepEqual(await page.evaluate(()=>[...document.querySelectorAll('.style-card strong')].map(x=>x.textContent)),['Film Edge','Amber Negative','Warm Photo Paper','35mm Full Scan','Warm Color Negative','Silver Negative','120 Medium Format','16mm Cine Scan','Super 8 Scan','Darkroom Contact','Cardboard Slide','Instant Photo Paper','35mm Half-frame','Super 16 Rebate','65mm Five-perf','Hand-filed Darkroom Edge']);
 await page.click('input[value="film-negative"]');
 await page.waitForFunction(()=>!document.querySelector('.preview-image').getAttribute('aria-busy')||document.querySelector('.preview-image').getAttribute('aria-busy')==='false');
 await page.click("loc=role:button[name='Apply selected style']");
@@ -85,7 +86,7 @@ await page.waitForSelector('.templates-dialog',{state:'hidden'});
 assert.equal((await modelCalls()).length,0,'Selecting and applying local film templates must not invoke AI');
 assert.equal(await page.evaluate(()=>document.querySelector('#frame-hex').value),'#1C201F');
 assert.equal(await page.evaluate(()=>[...document.querySelectorAll('.settings-panel button')].some(b=>b.textContent.trim()==='Refine once')),false,'Local templates must not suggest AI refinement');
-console.log('PASS: twelve local film templates apply without a model call; details remain optional.');
+console.log('PASS: sixteen local film templates apply without a model call; details remain optional.');
 
 await page.goto('http://127.0.0.1:1420/tests/ui/app.html?refine');
 await page.waitForSelector('.quick-templates-heading button:not([disabled])');
@@ -108,3 +109,4 @@ await page.waitForSelector('.drop-overlay');
 await page.evaluate(()=>window.__qa.dragLeave());
 console.log('PASS: Chinese localization and existing grouped-drop listener remain available.');
 console.log('All simplified design acceptance checks passed. Model calls above used fixture replies only.');
+await task.finish({keep:[]});

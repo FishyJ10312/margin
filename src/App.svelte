@@ -283,9 +283,16 @@
   let modelOpen = false;
   let modelsConfigOpen=false,returnToModel=false;
   let stagedModelConfig:AiConfig|null=null;
-  function configureModels(current:AiConfig|null=null){stagedModelConfig=current?clone(current):null;returnToModel=modelOpen;modelOpen=false;modelsConfigOpen=true;}
+  let modelConfigTarget: 'analysis' | 'image' = 'analysis';
+  function configureModels(current: AiConfig | null = null, target: 'analysis' | 'image' = 'analysis') {
+    stagedModelConfig = current ? clone(current) : null;
+    modelConfigTarget = target;
+    returnToModel = modelOpen;
+    modelOpen = false;
+    modelsConfigOpen = true;
+  }
   function closeModelConfig(){modelsConfigOpen=false;if(returnToModel&&selectedPhoto)modelOpen=true;else stagedModelConfig=null;returnToModel=false;}
-  let modelMode:'design'|'refine'|'image'='image';
+  let modelMode:'design'|'refine'|'image'='design';
   let modelTarget:'frame'|'sticker'='frame';
   let sessionApiKey = '',sessionApiOrigin='';
   let sessionImageApiKey='',sessionImageApiOrigin='';
@@ -1407,7 +1414,7 @@
         {:else}<button class="button primary export-primary export-button" on:click={openExportDialog} disabled={!desktop || !initialized || !selectedIds.length || !!localError || starting || importing || undoing || agentBusy}><Download size={16}/>{$t('导出选中 {0} 张',{0:selectedIds.length})}</button>{/if}
         <div class="inspector-bottom-row">
           <button type="button" class="export-options" on:click={openExportDialog} disabled={!desktop||!initialized||!photos.length||isRunning||starting||importing||undoing} aria-label={$t('导出选项')}>{settings.export.format.toUpperCase()} · {settings.export.format==='jpg'?settings.export.jpegQuality:$t('无损 PNG')} · {settings.export.longEdge?`${settings.export.longEdge} px`:$t('保留原始像素')}<ChevronDown size={12}/></button>
-          <button class="text-button art-trigger" disabled={!desktop||!selectedPhoto||importing||isRunning} on:click={()=>{modelMode='image';modelTarget='frame';modelOpen=true;}}><WandSparkles size={14}/>{$t('艺术边框')}</button>
+          <button class="text-button art-trigger" disabled={!desktop||!selectedPhoto||importing||isRunning} on:click={()=>{modelMode='design';modelTarget='frame';modelOpen=true;}}><WandSparkles size={14}/>{$t('艺术边框')}</button>
         </div>
       </div>
     </aside>
@@ -1498,6 +1505,6 @@
 </dialog>
 
 {#if modelOpen && selectedPhoto}<ModelPanel bind:initialMode={modelMode} bind:imageTarget={modelTarget} initialConfig={stagedModelConfig} onconfigure={configureModels} photo={selectedPhoto} count={photos.length} baseSettings={settings} onsavetemplate={saveSuggestedFrame} bind:apiKey={sessionApiKey} bind:apiOrigin={sessionApiOrigin} bind:imageApiKey={sessionImageApiKey} bind:imageApiOrigin={sessionImageApiOrigin} onapply={applyArt} onclose={()=>{modelOpen=false;stagedModelConfig=null;}} />{/if}
-{#if modelsConfigOpen}<ModelsConfig initialConfig={stagedModelConfig} bind:apiKey={sessionApiKey} bind:apiOrigin={sessionApiOrigin} bind:imageApiKey={sessionImageApiKey} bind:imageApiOrigin={sessionImageApiOrigin} onsaved={value=>stagedModelConfig=clone(value)} onclose={closeModelConfig}/>{/if}
+{#if modelsConfigOpen}<ModelsConfig initialConfig={stagedModelConfig} target={modelConfigTarget} bind:apiKey={sessionApiKey} bind:apiOrigin={sessionApiOrigin} bind:imageApiKey={sessionImageApiKey} bind:imageApiOrigin={sessionImageApiOrigin} onsaved={value=>stagedModelConfig=clone(value)} onclose={closeModelConfig}/>{/if}
 
 {#if templatesOpen}<FrameTemplates photo={selectedPhoto} currentPreview={preview?.dataUrl||''} currentSettings={settings} templates={frameTemplates} draft={templateDraft} initialName={templateName} initialCategory={templateCategory} onsave={saveFrameTemplate} ondelete={deleteFrameTemplate} onapply={applyFrameTemplate} onclose={()=>templatesOpen=false}/>{/if}

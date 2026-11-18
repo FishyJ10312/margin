@@ -255,6 +255,15 @@ async fn run_task(
     let mut body = request_body(c, direction, photo);
     if let Some(prompt) = frame_prompt {
         body["prompt"] = prompt.into();
+        if let Some(geometry) = photo.and_then(|p| p.geometry.as_ref()) {
+            use std::cmp::Ordering;
+            body["size"] = match geometry.canvas_width.cmp(&geometry.canvas_height) {
+                Ordering::Less => "1024x1536",
+                Ordering::Equal => "1024x1024",
+                Ordering::Greater => "1536x1024",
+            }
+            .into();
+        }
         if let Some(before) = photo.and_then(|p| p.before.as_ref()) {
             body["images"]
                 .as_array_mut()
@@ -293,7 +302,7 @@ async fn run_task(
     } else {
         format!("由 {} 生成的透明手绘素材", c.model.trim())
     };
-    let provenance = json!({"provider":"openai-images-api","model":c.model.trim(),"quality":c.quality,"size":c.size,"prompt":frame_prompt.unwrap_or(direction),"referenceUsed":photo.is_some(),"summary":summary});
+    let provenance = json!({"provider":"openai-images-api","model":c.model.trim(),"quality":c.quality,"size":body["size"],"prompt":frame_prompt.unwrap_or(direction),"referenceUsed":photo.is_some(),"summary":summary});
     if frame_prompt.is_some() {
         crate::generated_art::save_frame_png(bytes, directory.to_path_buf(), provenance).await
     } else {
