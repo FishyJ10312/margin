@@ -164,13 +164,21 @@ async fn get_sampler_image(
 }
 #[tauri::command]
 async fn set_photo_settings(
-    photo_ids: Vec<String>,
-    settings: Option<RenderSettings>,
+    updates: std::collections::HashMap<String, Option<RenderSettings>>,
+    shared: Option<RenderSettings>,
     state: BackendState<'_>,
-) -> Result<Vec<app_models::Photo>, String> {
+) -> Result<(), String> {
     let backend = state.inner().clone();
-    blocking(move || backend.set_photo_settings(photo_ids, settings)).await
+    blocking(move || backend.set_photo_settings(updates, shared)).await
 }
+
+#[tauri::command]
+fn quick_frame_styles() -> Vec<RenderSettings> {
+    std::iter::once(RenderSettings::default())
+        .chain(["keyline", "scan-35mm"].into_iter().filter_map(designs::settings))
+        .collect()
+}
+
 #[tauri::command]
 async fn get_camera_info(
     photo_id: String,
@@ -489,11 +497,12 @@ async fn start_batch(
     output_directory: String,
     settings: RenderSettings,
     photo_ids: Vec<String>,
+    uniform_ratio: Option<model::Ratio>,
     app: AppHandle,
     state: BackendState<'_>,
 ) -> Result<BatchSnapshot, String> {
     let backend = state.inner().clone();
-    blocking(move || backend.start_batch(output_directory, settings, photo_ids, progress_sink(app)))
+    blocking(move || backend.start_batch_with_ratio(output_directory, settings, photo_ids, uniform_ratio, progress_sink(app)))
         .await
 }
 
@@ -604,6 +613,7 @@ pub fn run() {
             get_watermark_detail,
             get_camera_info,
             set_photo_settings,
+            quick_frame_styles,
             save_settings,
             save_preset,
             delete_preset,

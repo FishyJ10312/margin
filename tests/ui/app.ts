@@ -129,7 +129,13 @@ Object.assign(window,{__TAURI_INTERNALS__:{metadata:{currentWindow:{label:'main'
   try{await new Promise(r=>setTimeout(r,detailControl.delay));const dataUrl=composed(args.settings,true);detailControl.rendered.push({settings:structuredClone(args.settings),dataUrl});return {dataUrl,width:160,height:26,viewWidth:240,viewHeight:100,watermarkBounds:{x:30,y:50,width:160,height:26},position:{x:450+args.settings.watermark.offsetX,y:720+args.settings.watermark.offsetY,width:160,height:26},limits:{minX:-450,maxX:150,minY:-80,maxY:40}};}finally{detailControl.active--;}
  }
  if(cmd==='get_camera_info')return {...fixtureCamera};
- if(cmd==='set_photo_settings'){for(const p of fixturePhotos as any[])if(args.photoIds.includes(p.id)){if(args.settings)p.settings=structuredClone(args.settings);else delete p.settings;}persistCatalog();return structuredClone(fixturePhotos);}
+ if(cmd==='set_photo_settings'){
+  if(settingsControl.hold)await new Promise<void>(resolve=>settingsControl.pending.push(resolve));
+  for(const photo of fixturePhotos as any[])if(Object.hasOwn(args.updates,photo.id))photo.settings=structuredClone(args.updates[photo.id]);
+  if(args.shared)Object.assign(settings,structuredClone(args.shared));
+  persistCatalog();return;
+ }
+ if(cmd==='quick_frame_styles')return structuredClone([defaultSettings,...['keyline','scan-35mm'].map(id=>gallery.find(frame=>frame.id===id)!.settings)]);
  if(cmd==='list_fonts')return fonts;
  if(cmd==='list_builtin_frames')return structuredClone(gallery);
  if(cmd==='get_frame_template_previews')return Object.fromEntries(templates.map((t:any)=>[t.id,t.thumbnail]));

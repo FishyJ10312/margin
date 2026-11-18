@@ -44,5 +44,18 @@
   "正在编辑单独设置，不影响其他照片": "Editing this photo's own settings; others are unaffected",
   "{0} 张照片使用单独设置": "{0} photos use their own settings",
   "单独设置": "Own settings",
-  "{0} 张使用单独设置": "{0} use their own settings"
+  "{0} 张使用单独设置": "{0} use their own settings",
+  "共享设置": "Shared settings",
+  "当前照片仍使用单独设置": "This photo still uses its own settings",
+  "编辑选中 {0} 张": "Edit {0} selected",
+  "恢复共享设置": "Restore shared settings",
+  "请先保存设置": "Save the current settings and try again",
+  "导出构图": "Export composition",
+  "保留每张构图": "Keep each composition",
+  "本次统一为 {0}": "Use {0} for this export",
+  "快速试框": "Try a frame",
+  "细线卡纸": "Keyline mat",
+  "胶片扫描": "Film scan",
+  "按住看原片": "Hold for original",
+  "应用边框": "Apply frame"
 }

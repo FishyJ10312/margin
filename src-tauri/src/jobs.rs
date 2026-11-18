@@ -2,7 +2,7 @@ use crate::app_models::{
     AppSnapshot, BatchSnapshot, ImportResult, JobItem, Photo, PhotoRemovalReceipt, PhotoSelection, Preset, RemovedPhotos, RestoredPhotos, StoredState,
 };
 use crate::{imaging, source_io};
-use crate::model::RenderSettings;
+use crate::model::{Ratio, RenderSettings};
 use crate::storage::Storage;
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -468,34 +468,30 @@ impl Backend {
         imaging::watermark_detail(Path::new(&photo.path), &settings)
     }
 
-    /// Give photos their own settings, or return them to the shared ones (None).
+    /// Commit every changed photo together and return only the acknowledgement.
     pub fn set_photo_settings(
         &self,
-        photo_ids: Vec<String>,
-        settings: Option<RenderSettings>,
-    ) -> Result<Vec<Photo>, String> {
-        let settings = match settings {
-            Some(mut own) => {
-                self.storage.own_settings_assets(&mut own)?;
-                imaging::validate_settings(&own)?;
-                Some(own)
-            }
-            None => None,
-        };
+        mut updates: HashMap<String, Option<RenderSettings>>,
+        mut shared: Option<RenderSettings>,
+    ) -> Result<(), String> {
+        for settings in updates.values_mut().filter_map(Option::as_mut).chain(shared.as_mut()) {
+            imaging::validate_settings(settings)?;
+            self.storage.own_settings_assets(settings)?;
+        }
         let mut data = self.lock()?;
         let mut candidate = data.clone();
-        let ids: HashSet<&String> = photo_ids.iter().collect();
-        let mut changed = false;
-        for photo in candidate.photos.iter_mut().filter(|p| ids.contains(&p.id)) {
-            photo.settings = settings.clone();
-            changed = true;
+        for photo in &mut candidate.photos {
+            if let Some(settings) = updates.remove(&photo.id) {
+                photo.settings = settings;
+            }
         }
-        if !changed {
-            return Err("请先选择照片".into());
+        if !updates.is_empty() {
+            return Err("当前照片列表已变化，请重试".into());
         }
-        self.storage.save(&candidate)?;
-        *data = candidate;
-        Ok(data.photos.clone())
+        if let Some(settings) = shared {
+            candidate.settings = settings;
+        }
+        self.commit(&mut data, candidate)
     }
 
     pub fn camera_info(&self, photo_id: &str) -> Result<crate::camera_info::CameraInfo, String> {
@@ -664,13 +660,28 @@ impl Backend {
         self.commit(&mut data, candidate)
     }
 
+    #[cfg(test)]
     pub fn start_batch(
+        self: &Arc<Self>,
+        output_directory: String,
+        settings: RenderSettings,
+        photo_ids: Vec<String>,
+        sink: ProgressSink,
+    ) -> Result<BatchSnapshot, String> {
+        self.start_batch_with_ratio(output_directory, settings, photo_ids, None, sink)
+    }
+
+    pub fn start_batch_with_ratio(
         self: &Arc<Self>,
         output_directory: String,
         mut settings: RenderSettings,
         photo_ids: Vec<String>,
+        uniform_ratio: Option<Ratio>,
         sink: ProgressSink,
     ) -> Result<BatchSnapshot, String> {
+        if let Some(ratio) = &uniform_ratio {
+            settings.ratio = Some(ratio.clone());
+        }
         self.storage.own_settings_assets(&mut settings)?;
         imaging::validate_settings(&settings)?;
         let directory = prepare_output_directory(&output_directory)?;
@@ -688,7 +699,12 @@ impl Backend {
                     name: p.name.clone(),
                     source_path: p.path.clone(),
                     status: "pending".into(),
-                    settings: p.settings.clone(),
+                    settings: p.settings.clone().map(|mut own| {
+                        if let Some(ratio) = &uniform_ratio {
+                            own.ratio = Some(ratio.clone());
+                        }
+                        own
+                    }),
                     output_path: None,
                     temporary_path: None,
                     error: None,
@@ -1409,8 +1425,8 @@ mod tests {
         own.border_percent = 20.;
         own.frame_color = "#000000".into();
         own.export.format = "png".into(); // ignored: export options stay shared
-        let updated = backend.set_photo_settings(vec![own_id.clone()], Some(own)).unwrap();
-        assert!(updated.iter().find(|p| p.id == own_id).unwrap().settings.is_some());
+        backend.set_photo_settings(HashMap::from([(own_id.clone(), Some(own))]), None).unwrap();
+        assert!(backend.snapshot().unwrap().photos.iter().find(|p| p.id == own_id).unwrap().settings.is_some());
 
         let mut shared = RenderSettings::default();
         shared.frame_color = "#FFFFFF".into();
@@ -1442,9 +1458,31 @@ mod tests {
         }
         assert!(output.join("001-shared.png").exists() || output.join("002-shared.png").exists());
 
+        // A uniform canvas ratio applies to every output, while both colors
+        // and the unmodified catalog override survive the batch.
+        let uniform_output = directory.path().join("uniform");
+        fs::create_dir(&uniform_output).unwrap();
+        let before = backend.snapshot().unwrap();
+        backend.start_batch_with_ratio(
+            uniform_output.to_string_lossy().into_owned(),
+            before.batch.as_ref().unwrap().settings.clone(),
+            photos.iter().map(|p| p.id.clone()).collect(),
+            Some(Ratio { width: 4.0, height: 5.0 }),
+            Arc::new(|_| {}),
+        ).unwrap();
+        wait_for_worker(&backend);
+        let state = backend.snapshot().unwrap();
+        let batch = state.batch.unwrap();
+        assert_eq!(batch.status, "completed");
+        for item in &batch.items {
+            let ((width, height), pixel) = corner(item);
+            assert_eq!(height, (f64::from(width) * 1.25).ceil() as u32);
+            assert_eq!(pixel, if item.photo_id == own_id { Rgb([0, 0, 0]) } else { Rgb([255, 255, 255]) });
+        }
+        assert!(state.photos.iter().find(|p| p.id == own_id).unwrap().settings.as_ref().unwrap().ratio.is_none());
+
         // Returning to the shared settings clears the override.
-        let cleared = backend.set_photo_settings(vec![own_id.clone()], None).unwrap();
-        assert!(cleared.iter().all(|p| p.settings.is_none()));
+        backend.set_photo_settings(HashMap::from([(own_id.clone(), None)]), None).unwrap();
         let restarted = Backend::new(directory.path().join("state")).unwrap();
         assert!(restarted.snapshot().unwrap().photos.iter().all(|p| p.settings.is_none()));
     }

@@ -101,3 +101,6 @@ html[data-theme="light"] .export-done { background: #ffffff; border-color: #d4cc
 html[data-theme="light"] .export-done .text-button { color: #9a5b00; }
 html[data-theme="light"] .settings-scope { background: #efebe4; border-color: #ddd6ca; }
 html[data-theme="light"] .settings-scope button.active { background: #fbecd2; border-color: #f0a23b; color: #9a5b00; }
+
+html[data-theme="light"] .gallery-shell .thumbnail.selected { background: #f8e3c0; box-shadow: 0 0 0 1px #bc8753; }
+html[data-theme="light"] .gallery-shell .thumbnail.active, html[data-theme="light"] .gallery-shell .thumbnail.active.selected { box-shadow: 0 0 0 2px #a05512; }

@@ -5,8 +5,8 @@ export interface AgentCommand {requestId:string;name:string;arguments:Record<str
 const keys={
   ratio:['width','height'],
   decoration:['kind','color','opacity','scale'],
-  watermark:['kind','text','imagePath','fontPath','fontFamily','offsetX','offsetY','color','opacity','sizePercent','region','position','marginPercent'],
-  export:['format','jpegQuality','longEdge'],
+  watermark:['kind','text','imagePath','fontPath','fontFamily','offsetX','offsetY','color','opacity','sizePercent','region','position','marginPercent','cameraTemplate'],
+  export:['format','jpegQuality','longEdge','namePattern','keepCameraInfo'],
 };
 const top=['ratio','borderPercent','frameColor','decoration','watermark','export'];
 

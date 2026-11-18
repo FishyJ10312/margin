@@ -9,6 +9,7 @@
  export let onlimits:(limits:OffsetLimits|null)=>void;
  /** Where the mark sits on the full-resolution canvas, for the drag handle. */
  export let onbox:(box:{x:number;y:number;width:number;height:number}|null)=>void=()=>{};
+ export let hidden = false;
  export let collapsed=false,oncollapse:(collapsed:boolean)=>void=()=>{};
  let detail:WatermarkDetail|null=null,error='',busy=false,zoom=1,view='detail';
  let shownPhoto='';
@@ -34,7 +35,7 @@
  }
  onDestroy(()=>{disposed=true;clearTimeout(timer);queued=null;});
 </script>
-<details class="watermark-detail" class:collapsed open={!collapsed} on:toggle={(event)=>oncollapse(!event.currentTarget.open)} on:wheel|stopPropagation aria-label={$t("实际水印效果")} aria-busy={busy}>
+<details {hidden} class="watermark-detail" class:collapsed open={!collapsed} on:toggle={(event)=>oncollapse(!event.currentTarget.open)} on:wheel|stopPropagation aria-label={$t("实际水印效果")} aria-busy={busy}>
  <summary class="detail-heading" aria-label={$t(collapsed?"展开水印预览":"收起水印预览")} title={$t(collapsed?"展开水印预览":"收起水印预览")}>
   <strong><ZoomIn size={12}/>{#if !collapsed}<span class="detail-font" title={settings.watermark.fontFamily??''}>{settings.watermark.kind!=='image'?(settings.watermark.fontFamily||$t("内置思源黑体 · 支持中文")):'PNG'}</span>{/if}</strong>{#if !collapsed}<ChevronRight size={12}/>{/if}
  </summary>

@@ -10,12 +10,33 @@
   export let markBox:{x:number;y:number;width:number;height:number}|null=null;
   /** Drag deltas in full-resolution canvas pixels, relative to where the drag began. */
   export let onmarkdrag:(dx:number,dy:number,phase:'start'|'move'|'end')=>void=()=>{};
-  let markDrag:{x:number;y:number}|null=null,markShift={x:0,y:0};
-  $: if(markBox&&!markDrag)markShift={x:0,y:0};
-  $: handle=markBox?{left:width/2+panX+(markBox.x+markShift.x-fullW/2)*zoom,top:height/2+panY+(markBox.y+markShift.y-fullH/2)*zoom,w:Math.max(12,markBox.width*zoom),h:Math.max(12,markBox.height*zoom)}:null;
-  function markDown(e:PointerEvent){if(!e.isPrimary||e.button!==0)return;e.preventDefault();e.stopPropagation();(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);markDrag={x:e.clientX,y:e.clientY};markShift={x:0,y:0};onmarkdrag(0,0,'start');}
-  function markMove(e:PointerEvent){if(!markDrag)return;markShift={x:(e.clientX-markDrag.x)/zoom,y:(e.clientY-markDrag.y)/zoom};onmarkdrag(markShift.x,markShift.y,'move');}
-  function markUp(){if(!markDrag)return;markDrag=null;onmarkdrag(markShift.x,markShift.y,'end');}
+  let markDrag: { x: number; y: number; box: NonNullable<typeof markBox>; zoom: number } | null = null;
+  let markShift = { x: 0, y: 0 };
+  $: handleBox = markDrag?.box ?? markBox;
+  $: handle = handleBox ? {
+    left: width / 2 + panX + (handleBox.x + markShift.x - fullW / 2) * zoom,
+    top: height / 2 + panY + (handleBox.y + markShift.y - fullH / 2) * zoom,
+    w: Math.max(12, handleBox.width * zoom), h: Math.max(12, handleBox.height * zoom),
+  } : null;
+  function markDown(event: PointerEvent) {
+    if (!event.isPrimary || event.button !== 0 || !markBox) return;
+    event.preventDefault();
+    event.stopPropagation();
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    markDrag = { x: event.clientX, y: event.clientY, box: markBox, zoom };
+    onmarkdrag(0, 0, 'start');
+  }
+  function markMove(event: PointerEvent) {
+    if (!markDrag) return;
+    markShift = { x: (event.clientX - markDrag.x) / markDrag.zoom, y: (event.clientY - markDrag.y) / markDrag.zoom };
+    onmarkdrag(markShift.x, markShift.y, 'move');
+  }
+  function markUp() {
+    if (!markDrag) return;
+    onmarkdrag(markShift.x, markShift.y, 'end');
+    markDrag = null;
+    markShift = { x: 0, y: 0 };
+  }
   function markKey(e:KeyboardEvent){const step=(e.shiftKey?10:1)/Math.max(zoom,.01);const d:Record<string,[number,number]>={ArrowLeft:[-step,0],ArrowRight:[step,0],ArrowUp:[0,-step],ArrowDown:[0,step]};if(!d[e.key])return;e.preventDefault();e.stopPropagation();onmarkdrag(0,0,'start');onmarkdrag(d[e.key][0],d[e.key][1],'end');}
   let host:HTMLDivElement,image:HTMLImageElement,panSurface:HTMLButtonElement;
   let width=600,height=500,zoom=.1,panX=0,panY=0,fit=true;
@@ -31,7 +52,7 @@
   function paint(){if(!frame&&!disposed)frame=requestAnimationFrame(()=>{frame=0;const target=image;if(!target)return;clampPan();target.style.width='1400px';target.style.height=`${1400*fullH/fullW}px`;target.style.transform=`translate(-50%,-50%) translate3d(${panX}px,${panY}px,0) scale(${fullW*zoom/1400})`;});}
   function setZoom(value:number,ax=0,ay=0){if(!Number.isFinite(value))return;const next=Math.max(.005,Math.min(4,value)),factor=next/zoom;panX=ax-(ax-panX)*factor;panY=ay-(ay-panY)*factor;fit=false;zoom=next;paint();}
   function fitView(){fit=true;panX=0;panY=0;paint();}
-  function wheel(e:WheelEvent){if(picking)return;e.preventDefault();const r=host.getBoundingClientRect();setZoom(zoom*Math.exp(-e.deltaY*(e.deltaMode===1?.04:.002)),e.clientX-r.left-width/2,e.clientY-r.top-height/2);}
+  function wheel(e:WheelEvent){if(picking)return;e.preventDefault();if(markDrag)return;const r=host.getBoundingClientRect();setZoom(zoom*Math.exp(-e.deltaY*(e.deltaMode===1?.04:.002)),e.clientX-r.left-width/2,e.clientY-r.top-height/2);}
   function down(e:PointerEvent){if(!e.isPrimary||e.button!==0)return;e.preventDefault();panSurface.setPointerCapture(e.pointerId);drag={x:e.clientX,y:e.clientY,px:panX,py:panY};dragging=true;}
   function move(e:PointerEvent){if(!drag)return;panX=drag.px+e.clientX-drag.x;panY=drag.py+e.clientY-drag.y;paint();}
   function key(e:KeyboardEvent){const delta=e.shiftKey?80:20;const steps:Record<string,[number,number]>={ArrowLeft:[delta,0],ArrowRight:[-delta,0],ArrowUp:[0,delta],ArrowDown:[0,-delta]};if(steps[e.key]){e.preventDefault();panX+=steps[e.key][0];panY+=steps[e.key][1];paint();}else if(['+','=','-','0','1'].includes(e.key)){e.preventDefault();if(e.key==='0')fitView();else setZoom(e.key==='1'?1:zoom*(e.key==='-'?1/1.15:1.15));}}

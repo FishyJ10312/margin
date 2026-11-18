@@ -164,3 +164,32 @@ dialog { color-scheme: dark; }
 .export-done .text-button { color: #f0a23b; }
 .settings-scope { background: #141414; border-color: #2e2e2e; }
 .settings-scope button.active { background: #2a2215; border-color: #f0a23b; color: #f0a23b; }
+
+/* Keep the three inline samples within reach on the smallest desktop window. */
+#frame-panel .quick-templates { margin-block-start: 0; }
+#frame-panel .quick-templates-heading { margin-block-end: 4px; }
+#frame-panel .quick-template-grid > button { padding: 3px; gap: 3px; }
+#frame-panel .template-sample { aspect-ratio: 1.75; padding: 8px; position: relative; }
+#frame-panel .template-sample img { object-fit: contain; }
+#frame-panel .template-sample.keyline { background: #fcfbf8; }
+#frame-panel .template-sample.keyline img { outline: 1px solid #59696a; outline-offset: 2px; }
+#frame-panel .template-sample.scan {
+  background: repeating-linear-gradient(90deg, #887245 0 4px, transparent 4px 9px) center top 3px / calc(100% - 10px) 2px no-repeat,
+    repeating-linear-gradient(90deg, #887245 0 4px, transparent 4px 9px) center bottom 3px / calc(100% - 10px) 2px no-repeat,
+    #1c2325;
+}
+#frame-panel .ratio-title { margin-block-start: 12px; }
+#frame-panel .field-title:has(> label[for=border-range]) { margin-block-start: 14px; margin-block-end: 4px; }
+#frame-panel .color-label { margin-block-start: 14px; }
+.trial-actions { display: flex; justify-content: end; gap: 7px; align-items: center; margin-block-start: 6px; }
+.gallery-shell .trial-actions .text-button { min-block-size: 28px; }
+.restore-shared { align-self: flex-start; margin: 2px 16px 0; min-block-size: 24px; font-size: 11px; }
+.export-composition { margin-block-start: 10px; }
+
+.gallery-shell .thumbnail.selected { background: #4a371f; box-shadow: 0 0 0 1px #906b3d; }
+.gallery-shell .thumbnail.active, .gallery-shell .thumbnail.active.selected { box-shadow: 0 0 0 2px #ffb753; }
+.gallery-shell .thumbnail .own-badge {
+  display: grid; place-items: center; inline-size: 17px; block-size: 17px; inset: 3px auto auto 3px;
+  color: #fff4e3; background: #26221d; border-radius: 4px; box-shadow: 0 0 0 1px #92764f;
+}
+.gallery-shell .thumbnail > img { border-radius: 1px; }
