@@ -1,4 +1,5 @@
 import type {RenderSettings,FontOption} from './types';
+import type {ExplicitSettingsEdit} from './photo-settings';
 export interface AgentStatus {enabled:boolean;allowWrites:boolean;endpoint:string|null;toolCount:number;activeRequests:number;lastTool:string|null;clientJson:string;codexToml:string}
 export interface AgentCommand {requestId:string;name:string;arguments:Record<string,unknown>}
 
@@ -42,6 +43,27 @@ export function patchAgentSettings(current:RenderSettings,value:unknown,fonts:Fo
   if(watermark?.imagePath!=null){if(watermark.imagePath==='')next.watermark.imagePath=null;else if(!absoluteLocalPath(watermark.imagePath).toLowerCase().endsWith('.png'))throw new Error('Watermark image must be a local PNG');}
   if(watermark?.fontPath!=null){if(watermark.fontPath==='')next.watermark.fontPath=null;else if(!(/\.(?:otf|ttf|ttc|otc)$/i).test(absoluteLocalPath(watermark.fontPath)))throw new Error('Font must be an OTF, TTF, TTC or OTC file');}
   return next;
+}
+
+/** Preserve the intent of the validated patch instead of diffing only the
+ * active photo. Identical values still apply to the other selected photos. */
+export function explicitAgentEdit(value:unknown,next:RenderSettings):ExplicitSettingsEdit {
+  const patch=record(value),explicit:ExplicitSettingsEdit={};
+  if(Object.hasOwn(patch,'ratio'))explicit.ratio=next.ratio;
+  if(Object.hasOwn(patch,'borderPercent'))explicit.borderPercent=next.borderPercent;
+  if(Object.hasOwn(patch,'frameColor'))explicit.frameColor=next.frameColor;
+  const pick=<T extends object>(fields:Record<string,unknown>,normalized:T):Partial<T>=>{
+    const result:Partial<T>={};
+    for(const key of Object.keys(fields) as (keyof T)[])result[key]=normalized[key];
+    return result;
+  };
+  if(patch.decoration)explicit.decoration=pick(record(patch.decoration),next.decoration);
+  if(patch.watermark){
+    const fields=record(patch.watermark);
+    explicit.watermark=pick(fields,next.watermark);
+    if(Object.hasOwn(fields,'fontFamily'))explicit.watermark.fontPath=next.watermark.fontPath;
+  }
+  return explicit;
 }
 
 export function absoluteLocalPath(value:unknown):string{

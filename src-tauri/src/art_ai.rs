@@ -179,12 +179,7 @@ impl ArtAi {
             config.chatgpt_account_id = self.chatgpt.state()?.active_id;
         }
         let path = find_codex(config.codex_path.as_deref());
-        let logged = path.as_ref().is_some_and(|p| {
-            std::process::Command::new(p)
-                .args(["login", "status"])
-                .output()
-                .is_ok_and(|o| o.status.success())
-        });
+        let logged = path.as_deref().is_some_and(codex_login_status);
         Ok(AiState {
             image_models: crate::image_api::RECOMMENDED_MODELS
                 .iter()
@@ -524,6 +519,35 @@ pub(crate) fn find_codex(custom: Option<&str>) -> Option<PathBuf> {
     }
     paths.into_iter().find(|p| p.is_file())
 }
+/// A slow or wedged CLI must not keep the model settings dialog from opening.
+/// Match the generation process's authentication environment.
+fn codex_login_status(path: &Path) -> bool {
+    let Ok(mut child) = std::process::Command::new(path)
+        .args(["login", "status"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .env_remove("OPENAI_API_KEY")
+        .env_remove("CODEX_API_KEY")
+        .spawn()
+    else {
+        return false;
+    };
+    let start = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return status.success(),
+            Ok(None) if start.elapsed() < Duration::from_secs(3) => {
+                std::thread::sleep(Duration::from_millis(25));
+            }
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return false;
+            }
+        }
+    }
+}
 fn schema() -> Value {
     let number = json!({"type":"number"});
     let element = json!({"type":"object","additionalProperties":false,"properties":{
@@ -860,6 +884,28 @@ mod tests {
         assert!(a.contains(&"read-only".into()));
         assert!(a.contains(&"shell_tool".into()));
         assert!(!a.iter().any(|s| s.contains("dangerously")));
+    }
+    #[cfg(unix)]
+    #[test]
+    fn model_state_does_not_wait_forever_for_a_stalled_codex_login_probe() {
+        use std::os::unix::fs::PermissionsExt;
+        use std::time::Instant;
+        let d = tempfile::tempdir().unwrap();
+        let cli = d.path().join("codex-fixture");
+        fs::write(&cli, "#!/bin/sh\nexec sleep 5\n").unwrap();
+        fs::set_permissions(&cli, fs::Permissions::from_mode(0o700)).unwrap();
+        let service = ArtAi::new(d.path().into());
+        service
+            .save_config(&AiConfig {
+                codex_path: Some(cli.to_string_lossy().into_owned()),
+                ..Default::default()
+            })
+            .unwrap();
+        let start = Instant::now();
+        let state = service.state().unwrap();
+        assert_eq!(state.codex_path.as_deref(), cli.to_str());
+        assert!(!state.codex_logged_in, "a hung probe is not a verified connection");
+        assert!(start.elapsed() < Duration::from_secs(4));
     }
     #[test]
     fn prepare_is_local_and_cancel_before_completion_releases_busy() {

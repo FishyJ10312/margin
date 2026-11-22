@@ -38,5 +38,20 @@
   "暖白相纸、双层细边与底部短线，像一张整理好的暗房印相。": "Warm photo paper, double rules and quiet footer lines, inspired by darkroom prints.",
   "保留当前主题，优化图案形状、大小、位置与布局，让照片成为视觉中心": "Keep the theme; refine motif shapes, scale, placement and layout around the photo",
   "根据照片的内容、构图与色彩自主设计，保持清晰的视觉层次与适当留白": "Develop an original design from the photo’s subject, composition and colors, with clear hierarchy and considered space",
-  "请在模型配置中连接账户并选择可用模型": "Connect an account and choose an available model in model settings"
+  "请在模型配置中连接账户并选择可用模型": "Connect an account and choose an available model in model settings",
+  "改用本机 Codex（免 API Key）": "Use local Codex (no API key)",
+  "已检测到本机 Codex 登录，可直接生图。": "Local Codex is signed in and ready to generate.",
+  "暂未确认本机 Codex 登录，请检查登录后重新打开。": "Local Codex sign-in could not be confirmed. Check sign-in and reopen this dialog.",
+  "未检测到本机 Codex，请在模型配置中检查 Codex。": "Local Codex was not detected. Check Codex in model settings.",
+  "正在检查分析模型连接… 可以先切换到生图。": "Checking the analysis model… You can switch to image generation now.",
+  "正在取消请求…": "Canceling the request…",
+  "正在准备生图任务…": "Preparing the model request…",
+  "等待 Codex 生图，最多约 5 分钟…": "Waiting for Codex to draw the image (up to about 5 minutes)…",
+  "等待 GPT Image API 出图，最多约 5 分钟…": "Waiting for GPT Image API (up to about 5 minutes)…",
+  "已收到模型结果，正在本机合成预览…": "Model result received. Rendering the preview locally…",
+  "已等待 {0} 秒": "{0} seconds elapsed",
+  "预览未完成": "Preview unavailable",
+  "重试本机预览（不再次生图）": "Retry local preview (no new image request)",
+  "本机预览已取消，生成结果仍保留，可直接重试预览。": "Local preview was canceled. Your generated result is retained; retry the preview without generating again.",
+  "放弃本次结果，开启新一轮": "Discard result and start a new round"
 }

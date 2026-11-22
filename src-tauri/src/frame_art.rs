@@ -282,7 +282,9 @@ pub fn validate_generated(path: &str) -> Result<(), String> {
     let mut clear = 0u64;
     let outside = image.width() as u64 * image.height() as u64 - r.width as u64 * r.height as u64;
     for (x, y, p) in image.enumerate_pixels() {
-        if (x < r.x || x >= r.x + r.width || y < r.y || y >= r.y + r.height) && p[3] < 32 {
+        if (x < r.x || x >= r.x + r.width || y < r.y || y >= r.y + r.height)
+            && p[3] < crate::frame_opening::OPENING_ALPHA_THRESHOLD
+        {
             clear += 1;
         }
     }
@@ -400,6 +402,49 @@ mod tests {
                 image::imageops::crop_imm(&result, ox, oy, rw, rh).to_image()
             );
         }
+    }
+    #[test]
+    fn semi_transparent_residue_at_generated_opening_does_not_leave_a_white_seam() {
+        let dir = tempfile::tempdir().unwrap();
+        let mat = [218, 185, 150];
+        let mut source = RgbaImage::from_pixel(100, 125, Rgba([mat[0], mat[1], mat[2], 255]));
+        // Image models sometimes leave a translucent halo attached to the
+        // opening, above a more transparent center. That halo belongs to the
+        // opening, not the colored mat.
+        for y in 10..115 {
+            for x in 20..80 {
+                let alpha = if y < 20 { 48 } else { 0 };
+                source.put_pixel(x, y, Rgba([235, 220, 210, alpha]));
+            }
+        }
+        let path = dir.path().join("translucent-opening.png");
+        source.save(&path).unwrap();
+        let f = FrameImage {
+            image_path: path.to_string_lossy().into_owned(),
+            opacity: 1.,
+            reference: ArtReference {
+                width: 100,
+                height: 125,
+                x: 20,
+                y: 10,
+                photo_width: 60,
+                photo_height: 105,
+            },
+        };
+        let layout = Layout {
+            width: 200,
+            height: 250,
+            x: 40,
+            y: 20,
+            photo_width: 120,
+            photo_height: 210,
+            scale: 1.,
+        };
+        validate_generated(path.to_str().unwrap()).unwrap();
+        let mut result = RgbImage::from_pixel(200, 250, Rgb([255, 255, 255]));
+        draw_window(&mut result, &f, layout, 0, 0).unwrap();
+        assert_eq!(*result.get_pixel(100, 19), Rgb(mat));
+        assert_eq!(*result.get_pixel(100, 20), Rgb([255, 255, 255]));
     }
     #[test]
     fn malformed_generated_frame_is_rejected_before_application() {

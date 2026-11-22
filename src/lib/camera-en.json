@@ -47,6 +47,8 @@
   "{0} 张使用单独设置": "{0} use their own settings",
   "共享设置": "Shared settings",
   "当前照片仍使用单独设置": "This photo still uses its own settings",
+  "当前照片的预览和导出均使用单独设置；共享调整只影响没有单独设置的照片。": "This photo's preview and export use its own settings. Shared edits only affect photos without an override.",
+  "请先应用或取消正在试用的边框": "Apply or cancel the frame trial first.",
   "编辑选中 {0} 张": "Edit {0} selected",
   "恢复共享设置": "Restore shared settings",
   "请先保存设置": "Save the current settings and try again",

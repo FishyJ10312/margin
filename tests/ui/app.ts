@@ -29,10 +29,10 @@ const redoControl={fail:false,hold:false,pending:[] as (()=>void)[]};
 const removalHistory:{id:string;order:string[];photos:any[];selection:PhotoSelection}[]=[];
 const redoHistory:typeof removalHistory=[];
 const selectionControl={hold:false,pending:[] as (()=>void)[],active:0,maxActive:0};
-const settingsControl={hold:false,pending:[] as (()=>void)[]};
+const settingsControl={hold:false,fail:false,pending:[] as (()=>void)[]};
 const exportControl={directory:'/synthetic/exports' as string|null,holdDirectory:false,directoryPending:[] as (()=>void)[],holdStart:false,startPending:[] as (()=>void)[],fail:false};
 const modelControl={holdSave:false,savePending:[] as (()=>void)[],holdGeneration:false,generationPending:[] as (()=>void)[],failGeneration:false};
-const previewControl={hold:false,pending:[] as (()=>void)[],active:0,maxActive:0,rendered:[] as {photoId:string;settings:RenderSettings;dataUrl:string}[]};
+const previewControl={hold:false,failNext:false,pending:[] as (()=>void)[],active:0,maxActive:0,rendered:[] as {photoId:string;settings:RenderSettings;dataUrl:string}[]};
 const detailControl={delay:0,active:0,maxActive:0,rendered:[] as {settings:RenderSettings;dataUrl:string}[]};
 const windowControl={scale:2,inner:{width:2360,height:1600},outer:{width:2360,height:1648},position:{x:100,y:80},area:{position:{x:0,y:48},size:{width:3200,height:1952}},fullscreen:false,maximized:false,rejectResize:false};
 let fixturePhotos=params.has('empty')?[]:[{id:'synthetic',name:'synthetic-landscape.png',path:'/synthetic/photo.png',width:900,height:600,thumbnail}];
@@ -50,7 +50,7 @@ const historySnapshot=()=>({undo:removalHistory.map(r=>({id:r.id,count:r.photos.
 let id=Date.now();
 let chatgptState:any={accounts:[],activeId:null,diagnostic:null};
 let cancelLogin:((reason:string)=>void)|null=null;
-const authControl={scenario:'success',modelsDelay:0};
+const authControl={scenario:'success',modelsDelay:0,holdModels:false,modelsPending:[] as (()=>void)[]};
 let aiConfig={...structuredClone(defaultAiConfig),styleDirection:'Ocean line art'};
 if(params.has('legacy-style')){aiConfig.frameDesign.style='film';aiConfig.frameDesign.placement='corners';aiConfig.designDensity='rich';}
 if(params.has('connected-chatgpt')){chatgptState={accounts:[{id:'fixture-account',label:'Fixture account',connected:true,planEnabled:true,status:'saved'}],activeId:'fixture-account'};Object.assign(aiConfig,{provider:'chatgpt',chatgptAccountId:'fixture-account',model:'mock-vision-balanced'});}
@@ -82,7 +82,7 @@ Object.assign(window,{__TAURI_INTERNALS__:{metadata:{currentWindow:{label:'main'
  if(cmd==='plugin:window|set_size'){if(windowControl.rejectResize)throw 'Fixture window manager declined';const size=args.value.toJSON().Physical;windowControl.outer={width:size.width+windowControl.outer.width-windowControl.inner.width,height:size.height+windowControl.outer.height-windowControl.inner.height};windowControl.inner=size;return;}
  if(cmd==='plugin:window|set_position'){windowControl.position=args.value.toJSON().Physical;return;}
  if(cmd==='get_state'){importControl.stateRequested=true;await startupGate;importControl.stateReturned=true;return {settings:structuredClone(settings),presets:[],frameTemplates:structuredClone(templates),photos:structuredClone(fixturePhotos),batch:null,warnings:[],catalogHistory:historySnapshot(),...catalogResult()};}
- if(cmd==='save_settings'){if(settingsControl.hold)await new Promise<void>(resolve=>settingsControl.pending.push(resolve));Object.assign(settings,structuredClone(args.settings));persistCatalog();return;}
+ if(cmd==='save_settings'){if(settingsControl.hold)await new Promise<void>(resolve=>settingsControl.pending.push(resolve));if(settingsControl.fail)throw 'Fixture cannot save settings';Object.assign(settings,structuredClone(args.settings));persistCatalog();return structuredClone(args.settings);}
  if(cmd==='save_photo_selection'){
   selectionControl.active++;selectionControl.maxActive=Math.max(selectionControl.maxActive,selectionControl.active);
   try{if(selectionControl.hold)await new Promise<void>(resolve=>selectionControl.pending.push(resolve));if(args.catalogRevision!==catalogRevision)return false;fixtureSelection=restoredPhotoSelection(fixturePhotos.map(p=>p.id),args.selection);persistCatalog();return true;}finally{selectionControl.active--;}
@@ -127,7 +127,7 @@ Object.assign(window,{__TAURI_INTERNALS__:{metadata:{currentWindow:{label:'main'
  if(cmd==='get_preview'){
   previewControl.active++;previewControl.maxActive=Math.max(previewControl.maxActive,previewControl.active);
   const captured=structuredClone(args.settings);
-  try{if(previewControl.hold)await new Promise<void>(resolve=>previewControl.pending.push(resolve));const dataUrl=composed(captured);previewControl.rendered.push({photoId:args.photoId,settings:captured,dataUrl});return {dataUrl,width:1080,height:780,photoBounds:{x:90,y:90,width:900,height:600},warning:null};}finally{previewControl.active--;}
+  try{if(previewControl.hold)await new Promise<void>(resolve=>previewControl.pending.push(resolve));if(previewControl.failNext){previewControl.failNext=false;throw 'Fixture preview unavailable';}const dataUrl=composed(captured);previewControl.rendered.push({photoId:args.photoId,settings:captured,dataUrl});return {dataUrl,width:1080,height:780,photoBounds:{x:90,y:90,width:900,height:600},warning:null};}finally{previewControl.active--;}
  }
  if(cmd==='get_watermark_detail'){
   detailControl.active++;detailControl.maxActive=Math.max(detailControl.maxActive,detailControl.active);
@@ -136,9 +136,10 @@ Object.assign(window,{__TAURI_INTERNALS__:{metadata:{currentWindow:{label:'main'
  if(cmd==='get_camera_info')return {...fixtureCamera};
  if(cmd==='set_photo_settings'){
   if(settingsControl.hold)await new Promise<void>(resolve=>settingsControl.pending.push(resolve));
+  if(settingsControl.fail)throw 'Fixture cannot save settings';
   for(const photo of fixturePhotos as any[])if(Object.hasOwn(args.updates,photo.id))photo.settings=structuredClone(args.updates[photo.id]);
   if(args.shared)Object.assign(settings,structuredClone(args.shared));
-  persistCatalog();return;
+  persistCatalog();return {updates:structuredClone(args.updates),shared:structuredClone(args.shared)};
  }
  if(cmd==='quick_frame_styles')return structuredClone([defaultSettings,...['keyline','scan-35mm'].map(id=>gallery.find(frame=>frame.id===id)!.settings)]);
  if(cmd==='list_fonts')return fonts;
@@ -163,6 +164,7 @@ Object.assign(window,{__TAURI_INTERNALS__:{metadata:{currentWindow:{label:'main'
  if(cmd==='cancel_chatgpt_sign_in'){cancelLogin?.('已取消 ChatGPT 登录');cancelLogin=null;return;}
  if(cmd==='select_chatgpt_account'){chatgptState.activeId=args.accountId;return structuredClone(chatgptState);}
  if(cmd==='list_chatgpt_models'){
+  if(authControl.holdModels)await new Promise<void>(resolve=>authControl.modelsPending.push(resolve));
   await new Promise(r=>setTimeout(r,authControl.modelsDelay));
   if(authControl.scenario==='vault-failure'){chatgptState.accounts=chatgptState.accounts.map((a:any)=>a.id===args.accountId?{...a,connected:false,status:'reconnect'}:a);throw '无法读取本机登录授权，请点击重新连接 ChatGPT';}
   if(authControl.scenario==='models-outage'){chatgptState.accounts=chatgptState.accounts.map((a:any)=>a.id===args.accountId?{...a,status:'unavailable'}:a);throw '无法读取 ChatGPT 模型列表，请检查网络';}

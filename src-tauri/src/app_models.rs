@@ -1,6 +1,6 @@
 use crate::model::RenderSettings;
 use serde::{Deserialize, Serialize};
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 
 pub const REMOVAL_HISTORY_LIMIT: usize = 20;
 
@@ -202,6 +202,14 @@ pub struct AppSnapshot {
     pub catalog_history: CatalogHistorySnapshot,
     pub catalog_revision: u64,
     pub photo_selection: PhotoSelection,
+}
+
+/// The normalized, atomically committed settings, without photos/thumbnails.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsCommit {
+    pub updates: HashMap<String, Option<RenderSettings>>,
+    pub shared: Option<RenderSettings>,
 }
 
 #[derive(Clone, Debug, Serialize)]

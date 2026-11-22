@@ -13,7 +13,7 @@
  export let initialCategory='all';
  export let onsave:(name:string,settings:RenderSettings)=>Promise<void>;
  export let ondelete:(id:string)=>Promise<void>;
- export let onapply:(settings:RenderSettings)=>void;
+ export let onapply:(settings:RenderSettings,keepLayout:boolean,minimumPadding:number)=>void;
  export let onclose:()=>void;
  type Choice={id:string;name:string;description:string;settings:RenderSettings;thumbnail:string};
  const clone=<T,>(v:T):T=>JSON.parse(JSON.stringify(v));
@@ -62,7 +62,7 @@
  async function save(){if(!draft||busy)return;busy=true;problem='';try{await onsave(name,selectedId==='draft'&&candidate?candidate:draft);if(!alive)return;saved=true;draft=null;await tick();const item=templates[templates.length-1];if(item)choose({...item,description:''});}catch(e){if(alive)problem=String(e);}finally{if(alive)busy=false;}}
  async function remove(id:string){if(busy)return;busy=true;problem='';try{await ondelete(id);if(chosen?.id===id){candidate=null;chosen=null;selectedId='';}}catch(e){problem=String(e);}finally{busy=false;}}
  function palette(colors:string[]){if(candidate?.artwork?.design)candidate.artwork.design.colors=[...colors];}
- function apply(){if(candidate&&!previewPending&&!previewError)onapply(clone(candidate));}
+ function apply(){if(candidate&&!previewPending&&!previewError)onapply(clone(candidate),keepLayout,keepLayout&&chosen?.settings.artwork?.design?.film?chosen.settings.borderPercent:0);}
 </script>
 <dialog bind:this={dialog} class="templates-dialog" aria-labelledby="templates-title" on:cancel|preventDefault={onclose}>
  <header><div><h2 id="templates-title"><Bookmark size={18}/>{$t('边框模板')}</h2><p>{$t('胶片、卡纸与图案，直接预览选用，无需 AI 生成')}</p></div><button type="button" class="icon-button" aria-label={$t('关闭模板库')} on:click={onclose}><X size={18}/></button></header>

@@ -167,7 +167,7 @@ async fn set_photo_settings(
     updates: std::collections::HashMap<String, Option<RenderSettings>>,
     shared: Option<RenderSettings>,
     state: BackendState<'_>,
-) -> Result<(), String> {
+) -> Result<app_models::SettingsCommit, String> {
     let backend = state.inner().clone();
     blocking(move || backend.set_photo_settings(updates, shared)).await
 }
@@ -456,7 +456,7 @@ fn cancel_art_frames(state: State<'_, Arc<art_ai::ArtAi>>) {
 }
 
 #[tauri::command]
-async fn save_settings(settings: RenderSettings, state: BackendState<'_>) -> Result<(), String> {
+async fn save_settings(settings: RenderSettings, state: BackendState<'_>) -> Result<RenderSettings, String> {
     let backend = state.inner().clone();
     blocking(move || backend.save_settings(settings)).await
 }

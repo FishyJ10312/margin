@@ -3,13 +3,18 @@
 use crate::model::PixelRect;
 use image::RgbaImage;
 
+// Treat the entire predominantly transparent area as the opening, including
+// residual alpha that image models often leave around its edge. Using only
+// near-zero alpha can map that translucent rim onto the visible border.
+pub(crate) const OPENING_ALPHA_THRESHOLD: u8 = 128;
+
 pub fn detect(im: &RgbaImage) -> Option<PixelRect> {
     let (w, h) = im.dimensions();
     if w < 8 || h < 8 || w > 2048 || h > 2048 {
         return None;
     }
     let (cx, cy) = (w / 2, h / 2);
-    if im.get_pixel(cx, cy)[3] >= 32 {
+    if im.get_pixel(cx, cy)[3] >= OPENING_ALPHA_THRESHOLD {
         return None;
     }
     let count = w as usize * h as usize;
@@ -38,7 +43,7 @@ pub fn detect(im: &RgbaImage) -> Option<PixelRect> {
         for next in [p - 1, p + 1, p - w, p + w] {
             if seen[next as usize] == 0 {
                 seen[next as usize] = 1;
-                if im.get_pixel(next % w, next / w)[3] < 32 {
+                if im.get_pixel(next % w, next / w)[3] < OPENING_ALPHA_THRESHOLD {
                     queue.push(next);
                 }
             }

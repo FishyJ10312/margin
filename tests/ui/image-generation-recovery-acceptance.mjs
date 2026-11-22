@@ -1,0 +1,94 @@
+// Isolated transport: no actual account, API credentials or uploaded photo.
+import assert from 'node:assert/strict';
+const task=await taskSpace('Margin image generation recovery');
+console.log({spaceId:task.spaceId});
+const page=task.page('p1');
+await page.goto('http://127.0.0.1:1420/tests/ui/app.html?connected-chatgpt&image-api-configured');
+await page.waitForSelector('.art-trigger:not([disabled])');
+await page.selectOption('.language-select','en');
+await page.evaluate(()=>window.__qa.authControl.holdModels=true);
+await page.click('.art-trigger');
+await page.waitForFunction(()=>window.__qa.authControl.modelsPending.length===1);
+assert.equal(await page.evaluate(()=>!!document.querySelector('#generation-method')),
+ true,'A stalled analysis-model catalog must not block entering the independent image workflow');
+await page.selectOption('#generation-method','image');
+await page.waitForSelector('#generation-setup');
+assert.equal(await page.evaluate(()=>document.querySelector('.model-dialog [type=submit]').disabled),true);
+assert.equal(await page.evaluate(()=>window.__qa.requests.filter(r=>/^generate_/.test(r.cmd)).length),0);
+await page.click('#use-local-codex');
+await page.waitForFunction(()=>!document.querySelector('#generation-setup'));
+assert.equal(await page.evaluate(()=>window.__qa.aiConfig.image.provider),'openai','Selecting a local route does not save settings until the user generates');
+assert.equal(await page.evaluate(()=>document.querySelector('.model-dialog form > fieldset > .model-consent input').checked),false);
+await page.evaluate(()=>{
+ window.__qa.authControl.scenario='models-outage';
+ window.__qa.authControl.modelsPending.shift()();
+ window.__qa.modelControl.holdGeneration=true;
+});
+await page.click('.model-dialog form > fieldset > .model-consent input');
+await page.click('.model-dialog [type=submit]');
+await page.waitForFunction(()=>window.__qa.modelControl.generationPending.length===1);
+await page.waitForFunction(()=>Number(document.querySelector('[data-elapsed-seconds]')?.getAttribute('data-elapsed-seconds'))>=1);
+assert.match(await page.evaluate(()=>document.querySelector('.model-loading [role=status]')?.textContent),/Waiting.*Codex/i);
+assert.equal(await page.evaluate(()=>!!document.querySelector('progress:not([value])')),true);
+assert.equal(await page.evaluate(()=>document.querySelector('.model-loading button').disabled),false);
+await page.evaluate(()=>{
+ window.__qa.previewControl.hold=true;
+ window.__qa.modelControl.generationPending.shift()();
+});
+await page.waitForFunction(()=>window.__qa.previewControl.pending.length===1);
+assert.match(await page.evaluate(()=>document.querySelector('.model-loading [role=status]')?.textContent),/Model result received.*Rendering the preview/i);
+assert.equal(await page.evaluate(()=>Array.from(document.querySelectorAll('.art-suggestions button')).every(button=>button.disabled)),true,'A result cannot be applied or saved before its preview is rendered');
+await page.evaluate(()=>{
+ window.__qa.previewControl.hold=false;
+ window.__qa.previewControl.failNext=true;
+ window.__qa.previewControl.pending.shift()();
+});
+await page.waitForSelector('#retry-local-preview');
+assert.match(await page.evaluate(()=>document.querySelector('.art-image').textContent),/Preview unavailable/);
+assert.equal(await page.evaluate(()=>window.__qa.requests.filter(r=>/^generate_/.test(r.cmd)).length),1);
+assert.equal(await page.evaluate(()=>document.querySelector('.model-dialog [type=submit]').disabled),true,'A generated result waiting for a local preview must not permit another paid request');
+assert.equal(await page.evaluate(()=>document.querySelector('.model-dialog form > fieldset > .model-consent input').checked),false,'Consent is single-use for each model dispatch');
+await page.click('#retry-local-preview');
+await page.waitForSelector('.art-suggestions img');
+await page.waitForFunction(()=>!document.querySelector('[data-elapsed-seconds]'));
+const requests=await page.evaluate(()=>window.__qa.requests.filter(r=>/^generate_/.test(r.cmd)));
+assert.equal(requests.length,1);
+assert.equal(requests[0].cmd,'generate_complete_frame');
+assert.equal(requests[0].args.config.provider,'chatgpt');
+assert.equal(requests[0].args.config.image.provider,'codex');
+assert.equal(requests[0].args.apiKey,'');
+assert.equal(await page.evaluate(()=>!!document.querySelector('.model-problem')),false);
+console.log('PASS: stale analysis connection cannot stall or overwrite image generation; explicit no-key choice, elapsed status, one request and preview.');
+
+// Image-based refinement must remain a single model round even if local
+// rendering fails or is canceled. A free preview retry must retain the asset.
+assert.equal(await page.evaluate(()=>document.querySelector('.model-dialog form > fieldset > .model-consent input').checked),false);
+await page.click('.art-suggestions .button.secondary');
+await page.waitForSelector('.model-dialog',{state:'hidden'});
+await page.waitForSelector("loc=role:button[name='Refine once']");
+await page.click("loc=role:button[name='Refine once']");
+await page.waitForSelector('.model-dialog form > fieldset > .model-consent input:not([disabled])');
+await page.click('.model-dialog form > fieldset > .model-consent input');
+await page.click('.model-dialog [type=submit]');
+await page.waitForFunction(()=>window.__qa.modelControl.generationPending.length===1);
+await page.evaluate(()=>{window.__qa.previewControl.failNext=true;window.__qa.modelControl.generationPending.shift()();});
+await page.waitForSelector('#retry-local-preview');
+assert.equal(await page.evaluate(()=>document.querySelector('.model-dialog fieldset').disabled),true);
+assert.equal(await page.evaluate(()=>document.querySelector('.model-dialog form > fieldset > .model-consent input').checked),false);
+const dispatched=await page.evaluate(()=>window.__qa.requests.filter(r=>r.cmd==='generate_complete_frame').length);
+assert.equal(dispatched,2);
+await page.evaluate(()=>window.__qa.previewControl.hold=true);
+await page.click('#retry-local-preview');
+await page.waitForFunction(()=>window.__qa.previewControl.pending.length===1);
+await page.click('.model-loading button');
+await page.evaluate(()=>{window.__qa.previewControl.hold=false;window.__qa.previewControl.pending.shift()();});
+await page.waitForSelector('#retry-local-preview');
+assert.equal(await page.evaluate(()=>window.__qa.requests.filter(r=>r.cmd==='generate_complete_frame').length),dispatched);
+assert.equal(await page.evaluate(()=>window.__qa.requests.filter(r=>r.cmd==='cancel_art_frames').length),0,'Canceling local preview does not cancel or re-dispatch a completed model round');
+await page.click('#retry-local-preview');
+await page.waitForSelector('.refine-comparison figure:nth-child(2) img');
+await page.waitForFunction(()=>!document.querySelector('[data-elapsed-seconds]'));
+assert.equal(await page.evaluate(()=>document.querySelector('.model-dialog [type=submit]').disabled),true);
+assert.equal(await page.evaluate(()=>window.__qa.requests.filter(r=>r.cmd==='generate_complete_frame').length),dispatched);
+console.log('PASS: a completed raster refinement survives local preview failure/cancellation and only renders locally on retry.');
+await task.finish({keep:[]});

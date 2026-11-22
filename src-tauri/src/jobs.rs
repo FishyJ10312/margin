@@ -1,5 +1,5 @@
 use crate::app_models::{
-    AppSnapshot, BatchSnapshot, ImportResult, JobItem, Photo, PhotoRemovalReceipt, PhotoSelection, Preset, RemovedPhotos, RestoredPhotos, StoredState,
+    AppSnapshot, BatchSnapshot, ImportResult, JobItem, Photo, PhotoRemovalReceipt, PhotoSelection, Preset, RemovedPhotos, RestoredPhotos, SettingsCommit, StoredState,
 };
 use crate::{imaging, source_io};
 use crate::model::{Ratio, RenderSettings};
@@ -468,16 +468,22 @@ impl Backend {
         imaging::watermark_detail(Path::new(&photo.path), &settings)
     }
 
-    /// Commit every changed photo together and return only the acknowledgement.
+    /// Commit every changed photo together; return normalized settings (no thumbnails).
     pub fn set_photo_settings(
         &self,
         mut updates: HashMap<String, Option<RenderSettings>>,
         mut shared: Option<RenderSettings>,
-    ) -> Result<(), String> {
+    ) -> Result<SettingsCommit, String> {
         for settings in updates.values_mut().filter_map(Option::as_mut).chain(shared.as_mut()) {
-            imaging::validate_settings(settings)?;
+            // The inspector can still have the original import path. Resolve/copy
+            // owned assets before validation, just as shared settings do.
             self.storage.own_settings_assets(settings)?;
+            imaging::validate_settings(settings)?;
         }
+        let receipt = SettingsCommit {
+            updates: updates.clone(),
+            shared: shared.clone(),
+        };
         let mut data = self.lock()?;
         let mut candidate = data.clone();
         for photo in &mut candidate.photos {
@@ -491,7 +497,8 @@ impl Backend {
         if let Some(settings) = shared {
             candidate.settings = settings;
         }
-        self.commit(&mut data, candidate)
+        self.commit(&mut data, candidate)?;
+        Ok(receipt)
     }
 
     pub fn camera_info(&self, photo_id: &str) -> Result<crate::camera_info::CameraInfo, String> {
@@ -551,13 +558,14 @@ impl Backend {
         imaging::analysis_image(Path::new(&path))
     }
 
-    pub fn save_settings(&self, mut settings: RenderSettings) -> Result<(), String> {
+    pub fn save_settings(&self, mut settings: RenderSettings) -> Result<RenderSettings, String> {
         self.storage.own_settings_assets(&mut settings)?;
         imaging::validate_settings(&settings)?;
         let mut data = self.lock()?;
         let mut candidate = data.clone();
-        candidate.settings = settings;
-        self.commit(&mut data, candidate)
+        candidate.settings = settings.clone();
+        self.commit(&mut data, candidate)?;
+        Ok(settings)
     }
 
     pub fn save_preset(
@@ -1780,6 +1788,46 @@ mod tests {
             .unwrap()
             .to_rgb8();
         assert_eq!(pixels.get_pixel(5, 5).0, [0, 255, 0]);
+    }
+
+    #[test]
+    fn selected_photo_settings_keep_owned_watermark_when_source_is_moved() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("state");
+        let backend = Backend::new(root.clone()).unwrap();
+        let source = directory.path().join("photo.png");
+        RgbImage::from_pixel(100, 100, Rgb([200, 30, 30])).save(&source).unwrap();
+        let photo = backend.import_photos(vec![source.to_string_lossy().into_owned()]).unwrap().photos.remove(0);
+        let logo = directory.path().join("logo.png");
+        image::RgbaImage::from_pixel(12, 12, image::Rgba([0, 255, 0, 255])).save(&logo).unwrap();
+        let mut inspector = RenderSettings::default();
+        inspector.watermark.kind = "image".into();
+        inspector.watermark.image_path = Some(logo.to_string_lossy().into_owned());
+        inspector.watermark.opacity = 1.;
+        inspector.watermark.size_percent = 10.;
+        inspector.watermark.margin_percent = 0.;
+        inspector.watermark.position = "top-left".into();
+        let receipt = backend.set_photo_settings(HashMap::from([(photo.id.clone(), Some(inspector.clone()))]), None).unwrap();
+        let owned = receipt.updates[&photo.id].as_ref().unwrap().watermark.image_path.clone().unwrap();
+        assert!(Path::new(&owned).starts_with(&root));
+        assert_eq!(backend.snapshot().unwrap().photos[0].settings.as_ref().unwrap().watermark.image_path.as_deref(), Some(owned.as_str()));
+        fs::rename(&logo, directory.path().join("logo-moved.png")).unwrap();
+        inspector.border_percent = 9.;
+        assert!(backend.preview(&photo.id, &inspector).is_ok());
+        backend.set_photo_settings(HashMap::from([(photo.id.clone(), Some(inspector.clone()))]), None).unwrap();
+        let saved = backend.snapshot().unwrap().photos[0].settings.clone().unwrap();
+        assert_eq!(saved.border_percent, 9.);
+        assert_eq!(saved.watermark.image_path.as_deref(), Some(owned.as_str()));
+        let mut shared = RenderSettings::default();
+        shared.export.format = "png".into();
+        backend.start_batch(directory.path().join("export").to_string_lossy().into_owned(), shared, vec![photo.id], Arc::new(|_| {})).unwrap();
+        wait_for_worker(&backend);
+        let batch = backend.snapshot().unwrap().batch.unwrap();
+        assert_eq!(batch.items[0].status, "completed");
+        assert_eq!(image::open(batch.items[0].output_path.as_ref().unwrap()).unwrap().to_rgb8().get_pixel(10,10).0,[0,255,0]);
+        drop(backend);
+        let reopened = Backend::new(root).unwrap();
+        assert_eq!(reopened.snapshot().unwrap().photos[0].settings.as_ref().unwrap().border_percent, 9.);
     }
 
     #[test]

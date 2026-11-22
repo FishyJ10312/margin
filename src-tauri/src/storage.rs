@@ -186,7 +186,7 @@ impl Storage {
             .watermark
             .font_path
             .as_deref()
-            .filter(|_| settings.watermark.kind == "text")
+            .filter(|_| matches!(settings.watermark.kind.as_str(), "text" | "camera"))
         {
             if !path.is_empty() {
                 let suffix = Path::new(path)
@@ -326,5 +326,21 @@ mod tests {
         fs::remove_file(&source).unwrap();
         assert_eq!(fs::read(&first).unwrap(), b"asset bytes");
         assert_eq!(storage.copy_asset(&source, "png").unwrap(), first);
+    }
+
+    #[test]
+    fn camera_watermark_owns_its_custom_font() {
+        let directory = tempfile::tempdir().unwrap();
+        let storage = Storage::new(directory.path().join("state")).unwrap();
+        let font = directory.path().join("custom.ttf");
+        fs::write(&font, b"synthetic font bytes").unwrap();
+        let mut settings = RenderSettings::default();
+        settings.watermark.kind = "camera".into();
+        settings.watermark.font_path = Some(font.to_string_lossy().into_owned());
+        storage.own_settings_assets(&mut settings).unwrap();
+        let owned = settings.watermark.font_path.unwrap();
+        assert_ne!(owned, font.to_string_lossy());
+        fs::rename(&font, directory.path().join("moved.ttf")).unwrap();
+        assert_eq!(fs::read(owned).unwrap(), b"synthetic font bytes");
     }
 }

@@ -68,6 +68,11 @@ export interface Photo {
   settings?: RenderSettings | null;
 }
 
+export interface SettingsCommit {
+  updates: Record<string,RenderSettings|null>;
+  shared: RenderSettings|null;
+}
+
 export interface PreviewResult {
   dataUrl: string;
   sourceThumbnail?: string | null;

@@ -53,6 +53,9 @@ const beforeSize=await page.evaluate(()=>document.querySelector('.watermark-deta
 await page.fill('input[aria-label="Watermark size percentage"]','4');await settled();
 assert.notEqual(await page.evaluate(()=>document.querySelector('.watermark-detail img').src),beforeSize);
 await page.click('.position-details > summary');
+// The expanded controls can sit below the inspector's own scroll viewport.
+// Bring them into view just as a user scrolling the inspector would.
+await page.evaluate(()=>document.querySelector('input[aria-label="Watermark horizontal offset"]').scrollIntoView({block:'center',behavior:'instant'}));
 await page.fill('input[aria-label="Watermark horizontal offset"]','-40');await page.fill('input[aria-label="Watermark vertical offset"]','20');await settled();
 assert.ok(await page.evaluate(()=>document.querySelector('.detail-image').title.includes('X 410 · Y 740')));
 await page.selectOption('.watermark-detail select[aria-label="Watermark close-up zoom"]','2');
@@ -69,7 +72,7 @@ assert.equal(await page.evaluate(()=>document.querySelector('.watermark-detail .
 console.log('PASS: size/offsets/zoom stay synchronized; overlay wheel input is isolated from main-photo zoom.');
 
 for(const [width,height]of [[1180,800],[900,650]]){
- await viewport(width,height);await page.focus('.font-picker');await page.press('.font-picker','Home');await settled();
+ await viewport(width,height);await page.evaluate(()=>document.querySelector('.font-picker').scrollIntoView({block:'center',behavior:'instant'}));await page.focus('.font-picker');await page.press('.font-picker','Home');await settled();
  const sized=await geometry();assert.equal(sized.width,width);assert.equal(sized.height,height);visibleTogether(sized);
  console.log('PASS: photo, watermark, font list and export controls fit',width+'×'+height);
 }

@@ -1,6 +1,6 @@
 <script lang="ts">
   import {t} from './lib/i18n';
-  import {photoEdit, type ExplicitFrameEdit} from './lib/photo-settings';
+  import {actualPhotoSettings,adoptOwnedAssets,frameStyleEdit,photoEdit,type ExplicitSettingsEdit,type PhotoEditPolicy} from './lib/photo-settings';
   import { onMount, onDestroy, tick } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
   import { listen } from '@tauri-apps/api/event';
@@ -19,7 +19,7 @@
   import FrameTemplates from './lib/FrameTemplates.svelte';
   import PhotoLibraryActions from './lib/PhotoLibraryActions.svelte';
   import AgentConnection from './lib/AgentConnection.svelte';
-  import {patchAgentSettings,absoluteLocalPath,catalogIds,readOnlyAgentTools,type AgentStatus,type AgentCommand} from './lib/agent-settings';
+  import {patchAgentSettings,explicitAgentEdit,absoluteLocalPath,catalogIds,readOnlyAgentTools,type AgentStatus,type AgentCommand} from './lib/agent-settings';
   import {singlePhotoSelection,allPhotoSelection,clearPhotoSelection,restoredPhotoSelection,selectCatalogPhoto,contextCatalogPhoto,selectionAfterRemoval,type PhotoSelection} from './lib/photo-selection';
   import {language} from './lib/i18n';
   import {brand} from './lib/brand';
@@ -29,8 +29,8 @@
   import {
     defaultSettings,
     type AppSnapshot, type BatchSnapshot, type ImportResult, type Photo,
-    type Preset, type PreviewResult, type RenderSettings, type WatermarkKind,
-    type WatermarkPosition, type WatermarkRegion, type FontOption, type FrameSuggestion, type FrameDecoration, type ArtScene, type FrameTemplate, type BuiltinFrame, defaultCameraTemplate, type CameraInfo } from './lib/types';
+    type Preset, type PreviewResult, type RenderSettings, type SettingsCommit, type WatermarkKind,
+    type WatermarkPosition, type WatermarkRegion, type FontOption, type FrameSuggestion, type FrameDecoration, type FrameTemplate, type BuiltinFrame, defaultCameraTemplate, type CameraInfo } from './lib/types';
 
   const desktop = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
   const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
@@ -51,7 +51,11 @@
   function openTemplates(draft:RenderSettings|null=null,name='',category='all'){templateDraft=draft?clone(draft):null;templateName=name;templateCategory=category;templatesOpen=true;}
   async function saveFrameTemplate(name:string,style:RenderSettings){const saved=await invoke<FrameTemplate>('save_frame_template',{name,settings:style});frameTemplates=[...frameTemplates,saved];}
   async function deleteFrameTemplate(id:string){await invoke('delete_frame_template',{id});frameTemplates=frameTemplates.filter(t=>t.id!==id);}
-  function applyFrameTemplate(style:RenderSettings){previousArt={ratio:clone(settings.ratio),frameColor:settings.frameColor,borderPercent:settings.borderPercent,decoration:clone(settings.decoration),artwork:settings.artwork?clone(settings.artwork):null};settings={...settings,ratio:clone(style.ratio),borderPercent:style.borderPercent,frameColor:style.frameColor,decoration:clone(style.decoration),artwork:style.artwork?clone(style.artwork):null};templatesOpen=false;modelOpen=false;syncControls();}
+  function applyFrameTemplate(style:RenderSettings, keepLayout=false, minimumPadding=0){
+    const next={...settings,ratio:clone(style.ratio),borderPercent:style.borderPercent,frameColor:style.frameColor,decoration:clone(style.decoration),artwork:style.artwork?clone(style.artwork):null};
+    performFrameEdit(next,frameStyleEdit(style,keepLayout),{keepLayout,minimumPadding});
+    templatesOpen=false;modelOpen=false;
+  }
   function saveSuggestedFrame(suggestion:FrameSuggestion){openTemplates({...settings,frameColor:suggestion.frameColor,borderPercent:suggestion.borderPercent,decoration:clone(suggestion.decoration),artwork:clone(suggestion.artwork)},suggestion.title);}
 
   let photoSelection = singlePhotoSelection();
@@ -70,10 +74,12 @@
   $: selectedPhotoIds = new Set(selectedIds);
   function selectPhoto(id:string,event?:MouseEvent) {
     if(undoing||agentBusy||scopeBusy)return;
+    stageSettings(settings);
     photoSelection=selectCatalogPhoto(photos.map(photo=>photo.id),photoSelection,id,{additive:event?.metaKey||event?.ctrlKey,range:event?.shiftKey});
   }
   function selectContextPhoto(id:string) {
-    if(scopeBusy)return;
+    if(scopeBusy||undoing||agentBusy)return;
+    stageSettings(settings);
     photoSelection=contextCatalogPhoto(photos.map(photo=>photo.id),photoSelection,id);
   }
   function stepPhoto(delta:number,extend:boolean){
@@ -83,6 +89,7 @@
     const current=ids.indexOf(selectedId??'');
     const next=ids[Math.max(0,Math.min(ids.length-1,current<0?0:current+delta))];
     if(!next||(next===selectedId&&!extend))return;
+    stageSettings(settings);
     photoSelection=selectCatalogPhoto(ids,photoSelection,next,{additive:false,range:extend});
     requestAnimationFrame(()=>{
       const thumb=document.querySelector<HTMLElement>(`.thumbnail[data-photo-id="${CSS.escape(next)}"]`);
@@ -102,22 +109,26 @@
   $: if (initialized && JSON.stringify(photoSelection) !== inspectorSelectionKey) loadInspector(photoSelection);
   $: scopedIds = selectedIds.length ? selectedIds : selectedId ? [selectedId] : [];
   $: hasScopedOverrides = photos.some(photo => photo.settings && scopedIds.includes(photo.id));
+  $: sharedOverridePreview = !editSelected && !!selectedPhoto?.settings;
+  $: frameAffectedCount = editSelected ? scopedIds.length : photos.filter(photo=>!photo.settings).length;
 
   function loadInspector(selection: PhotoSelection, scope?: boolean) {
+    commitSettingsStep();
     inspectorSelectionKey = JSON.stringify(selection);
     const photo = photos.find(item => item.id === selection.activeId);
     editSelected = !!photo && (scope ?? (selection.ids.length > 1 || !!photo.settings));
-    settings = clone(editSelected && photo?.settings
-      ? { ...photo.settings, export: sharedSettings.export }
-      : sharedSettings);
-    saveBaseline = clone(settings);
-    resetSettingsHistory();
-    syncControls();
+    refreshInspector();
     cancelFrameTrial();
     previousArt = null;
     markBox = null;
     markDragStart = null;
     offsetLimits = null;
+  }
+  function refreshInspector() {
+    const photo=photos.find(item=>item.id===photoSelection.activeId);
+    settings=clone(editSelected&&photo?.settings ? {...photo.settings,export:sharedSettings.export} : sharedSettings);
+    saveBaseline=clone(settings);
+    syncControls();
   }
 
   function setSettingsScope(own: boolean) {
@@ -144,13 +155,14 @@
       syncControls();
       settingsUndo = [...settingsUndo.slice(-49), previous];
       settingsRedo = [];
+      previousArt=null;
       lastSettingsEditAt = Date.now();
     } catch (error) { notices = [...notices, errorMessage(error)]; }
     finally { scopeBusy = false; }
   }
 
-  function selectAllPhotos(){photoSelection=allPhotoSelection(photos.map(photo=>photo.id),photoSelection);}
-  function clearSelectedPhotos(){photoSelection=clearPhotoSelection(photoSelection);}
+  function selectAllPhotos(){stageSettings(settings);photoSelection=allPhotoSelection(photos.map(photo=>photo.id),photoSelection);}
+  function clearSelectedPhotos(){stageSettings(settings);photoSelection=clearPhotoSelection(photoSelection);}
   let photoActions:PhotoLibraryActions;
   let batch: BatchSnapshot | null = null;
   let initialized = false;
@@ -171,6 +183,7 @@
   let previewPhotoId = '';
   let previewRevision = 0;
   let previewTimer: ReturnType<typeof setTimeout> | undefined;
+  let lastPreviewKey = '';
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
   let previewInFlight = false;
   let queuedPreview: { photoId: string; settings: RenderSettings; revision: number } | null = null;
@@ -235,7 +248,8 @@
     decoration: quickStyles[trialIndex].decoration,
     artwork: quickStyles[trialIndex].artwork,
   } : null;
-  $: displayedSettings = trialSettings ?? settings;
+  $: effectiveSettings = actualPhotoSettings(settings,sharedSettings,selectedPhoto?.settings,editSelected);
+  $: displayedSettings = trialSettings ?? effectiveSettings;
 
   async function loadQuickStyles() {
     if (loadingQuickStyles || quickStyles.length) return;
@@ -253,12 +267,9 @@
   function applyTrial() {
     if (!trialSettings || previewLoading || previewError) return;
     const candidate = trialSettings;
+    const floor=trialIndex===0?0:quickStyles[trialIndex]?.borderPercent??0;
     cancelFrameTrial();
-    applyFrameTemplate(candidate);
-    if (editSelected) {
-      const { frameColor, artwork, decoration, borderPercent } = candidate;
-      stageSettings(settings, { frameColor, artwork, decoration, borderPercent });
-    }
+    applyFrameTemplate(candidate,true,floor);
   }
 
   function quickFrameKey(event: KeyboardEvent, index: number) {
@@ -296,14 +307,26 @@
   let modelTarget:'frame'|'sticker'='frame';
   let sessionApiKey = '',sessionApiOrigin='';
   let sessionImageApiKey='',sessionImageApiOrigin='';
-  let previousArt: {ratio:RenderSettings['ratio'];frameColor:string;borderPercent:number;decoration:FrameDecoration;artwork?:ArtScene|null} | null = null;
+  let previousArt: SettingsEdit | null = null;
   const motifs: {kind:FrameDecoration['kind'];name:string}[]=[{kind:'none',name:'纯色'},{kind:'paper',name:'纸感'},{kind:'linen',name:'亚麻'},{kind:'dots',name:'点阵'},{kind:'lines',name:'细条纹'},{kind:'waves',name:'柔波纹'},{kind:'corners',name:'角标'}];
   function applyArt(suggestion:FrameSuggestion) {
-    previousArt={ratio:clone(settings.ratio),frameColor:settings.frameColor,borderPercent:settings.borderPercent,decoration:clone(settings.decoration),artwork:settings.artwork?clone(settings.artwork):null};
-    settings={...settings,frameColor:suggestion.frameColor,borderPercent:suggestion.borderPercent,decoration:clone(suggestion.decoration),artwork:clone(suggestion.artwork)};
-    modelOpen=false;stagedModelConfig=null;syncControls();
+    const next={...settings,frameColor:suggestion.frameColor,borderPercent:suggestion.borderPercent,decoration:clone(suggestion.decoration),artwork:clone(suggestion.artwork)};
+    performFrameEdit(next,{frameColor:next.frameColor,borderPercent:next.borderPercent,decoration:next.decoration,artwork:next.artwork});
+    modelOpen=false;stagedModelConfig=null;
   }
-  function undoArt() {if(previousArt){settings={...settings,...previousArt};previousArt=null;syncControls();}}
+  function performFrameEdit(next:RenderSettings,explicit:ExplicitSettingsEdit,policy:PhotoEditPolicy={}){
+    commitSettingsStep();
+    settings=clone(next);
+    if(stageSettings(settings,explicit,policy)){
+      commitSettingsStep();
+      previousArt=settingsUndo.at(-1)??null;
+    }
+    syncControls();
+  }
+  function undoArt() {
+    if(previousArt&&!pendingUndo&&settingsUndo.at(-1)===previousArt)undoSettings();
+    previousArt=null;
+  }
   let pickingColor = false;
   let pickerButton: HTMLButtonElement;
   function closePicker() { pickingColor = false; pickerButton?.focus({ preventScroll: true }); }
@@ -313,6 +336,7 @@
   let markDragStart: {x:number; y:number; box: MarkBox|null; scale: number; limits: OffsetLimits|null} | null = null;
   $: if(!watermarkPreviewVisible)markBox=null;
   function dragMark(dx: number, dy: number, phase: 'start'|'move'|'end') {
+    if(sharedOverridePreview||trialSettings||undoing||agentBusy)return;
     if (phase === 'start') {
       const scale = preview && selectedPhoto?.width ? preview.photoBounds.width / selectedPhoto.width : 1;
       markDragStart = { x:settings.watermark.offsetX, y:settings.watermark.offsetY, box:markBox, scale, limits:offsetLimits };
@@ -348,7 +372,7 @@
 
 
   $: selectedPhoto = photos.find((photo) => photo.id === selectedId) ?? null;
-  $: watermarkPreviewVisible = desktop && !!selectedPhoto && settings.watermark.kind !== 'none';
+  $: watermarkPreviewVisible = desktop && !!selectedPhoto && displayedSettings.watermark.kind !== 'none';
   $: galleryRatios = ['1:1','4:5','3:2','16:9'].map(value=>{
     const [width,height]=value.split(':');
     const reverse=`${height}:${width}`;
@@ -361,7 +385,7 @@
   $: totalCount = batch?.items.length ?? 0;
   $: progress = totalCount ? ((completedCount + failedCount) / totalCount) * 100 : 0;
   $: localError = $t(validateLocal(settings)) || $t(frameHexError);
-  $: if (initialized && desktop && !agentBusy) stageSettings(settings);
+  $: if (initialized && desktop && !agentBusy && !undoing) stageSettings(settings);
   $: if (initialized && desktop && !loading && !importing && !undoing && !agentBusy) queueSelectionSave(photoSelection,catalogRevision);
   $: if (initialized) schedulePreview(selectedId, JSON.stringify(displayedSettings));
   $: if (settings.frameColor !== lastFrameColor) {
@@ -378,15 +402,19 @@
   $: removalUndo,removalRedo,lastRemovalAt=Date.now();
 
   function captureSettings(ids: Set<string> = new Set()): SettingsEdit {
-    return {
-      inspector: saveBaseline,
-      shared: sharedSettings,
+    return clone({
+      inspector: saveBaseline, shared: sharedSettings,
       photos: Object.fromEntries(photos.filter(photo => ids.has(photo.id)).map(photo => [photo.id, photo.settings ?? null])),
-    };
+    });
   }
 
   function trackSettings(ids: Set<string>) {
     if (!pendingUndo) pendingUndo = captureSettings(ids);
+    else {
+      const missing= new Set([...ids].filter(id=>!Object.hasOwn(pendingUndo!.photos,id)));
+      if(missing.size)pendingUndo={...pendingUndo,photos:{...pendingUndo.photos,...captureSettings(missing).photos}};
+    }
+    previousArt=null;
     lastSettingsEditAt = Date.now();
     clearTimeout(settingsStepTimer);
     settingsStepTimer = setTimeout(commitSettingsStep, 400);
@@ -407,22 +435,24 @@
     pendingUndo = null;
     settingsUndo = [];
     settingsRedo = [];
+    previousArt=null;
   }
 
   function restoreSettings(entry: SettingsEdit) {
-    const inverse = captureSettings(new Set(Object.keys(entry.photos)));
-    if (sharedSettings !== entry.shared) {
-      sharedSettings = entry.shared;
+    const liveIds=new Set(photos.map(photo=>photo.id));
+    const updates:PhotoUpdates=Object.fromEntries(Object.entries(entry.photos).filter(([id])=>liveIds.has(id)));
+    const inverse = captureSettings(new Set(Object.keys(updates)));
+    if (!sameSettings(sharedSettings,entry.shared)) {
+      sharedSettings = clone(entry.shared);
       pendingSharedSettings = sharedSettings;
     }
-    pendingPhotoSettings = { ...pendingPhotoSettings, ...entry.photos };
-    if (Object.keys(entry.photos).length) {
-      photos = photos.map(photo => Object.hasOwn(entry.photos, photo.id) ? { ...photo, settings: entry.photos[photo.id] } : photo);
+    pendingPhotoSettings = { ...pendingPhotoSettings, ...clone(updates) };
+    if (Object.keys(updates).length) {
+      photos = photos.map(photo => Object.hasOwn(updates, photo.id) ? { ...photo, settings: clone(updates[photo.id]) } : photo);
     }
-    settings = clone(entry.inspector);
-    saveBaseline = clone(settings);
-    syncControls();
+    refreshInspector();
     cancelFrameTrial();
+    previousArt=null;
     lastSettingsEditAt = Date.now();
     void flushSettingsSave();
     return inverse;
@@ -481,6 +511,7 @@
       const state = await startupDeadline(invoke<AppSnapshot>('get_state'));
       if(attempt!==initializeRevision)return;
       sharedSettings = clone(state.settings);
+      resetSettingsHistory();
       settings = clone(state.settings);
       saveBaseline = clone(settings);
       presets = state.presets;
@@ -572,37 +603,111 @@
     return '';
   }
 
-  function stageSettings(value: RenderSettings, explicit: ExplicitFrameEdit = {}) {
-    if (validateLocal(value) || (JSON.stringify(value) === JSON.stringify(saveBaseline) && !Object.keys(explicit).length)) return;
-    const next = clone(value);
-    const before = saveBaseline;
-    const ids = new Set(photoSelection.ids.length ? photoSelection.ids : [photoSelection.activeId]);
-    const renderChanged = JSON.stringify({ ...before, export: next.export }) !== JSON.stringify(next) || Object.keys(explicit).length > 0;
-    if (pendingUndo && editSelected && renderChanged && !Object.keys(pendingUndo.photos).length) {
-      pendingUndo = { ...pendingUndo, photos: captureSettings(ids).photos };
-    }
-    trackSettings(editSelected && renderChanged ? ids : new Set());
-    saveBaseline = next;
-    if (!editSelected) {
-      sharedSettings = next;
-      pendingSharedSettings = next;
-    } else {
-      if (renderChanged) {
-        const apply = photoEdit(before, next, explicit);
-        photos = photos.map(photo => {
-          if (!ids.has(photo.id)) return photo;
-          const changed = apply(photo.settings ?? sharedSettings);
-          pendingPhotoSettings[photo.id] = changed;
-          return { ...photo, settings: changed };
-        });
+  const sameSettings=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
+  type SettingsPlan={next:RenderSettings;updates:PhotoUpdates;shared:RenderSettings|null};
+
+  // Build a complete, validated transaction before touching either the catalog
+  // or the save queue. Explicit actions are intentionally not reduced to the
+  // active photo's delta. Omitted fields still stay independent on each photo.
+  function planSettings(value:RenderSettings,explicit:ExplicitSettingsEdit={},policy:PhotoEditPolicy={}):SettingsPlan|null {
+    const next=clone(value),updates:PhotoUpdates={};
+    let shared:RenderSettings|null=null;
+    if(!editSelected){
+      if(!sameSettings(sharedSettings,next))shared=next;
+    }else{
+      const renderChanged=!sameSettings({...saveBaseline,export:next.export},next)||Object.keys(explicit).length>0;
+      if(renderChanged){
+        const ids=new Set(photoSelection.ids.length?photoSelection.ids:[photoSelection.activeId]);
+        const apply=photoEdit(saveBaseline,next,explicit,policy);
+        for(const photo of photos){
+          if(!ids.has(photo.id))continue;
+          const changed=apply(photo.settings??sharedSettings);
+          const invalid=validateLocal(changed);
+          if(invalid)throw new Error(photo.name+': '+invalid);
+          if(!sameSettings(photo.settings,changed))updates[photo.id]=changed;
+        }
       }
-      if (JSON.stringify(sharedSettings.export) !== JSON.stringify(next.export)) {
-        sharedSettings = { ...sharedSettings, export: next.export };
-        pendingSharedSettings = sharedSettings;
-      }
+      if(!sameSettings(sharedSettings.export,next.export))shared={...sharedSettings,export:next.export};
     }
+    return shared||Object.keys(updates).length?{next,updates,shared}:null;
+  }
+
+  function applySettingsPlan(plan:SettingsPlan,queue:boolean){
+    saveBaseline=clone(plan.next);
+    if(plan.shared){
+      sharedSettings=plan.shared;
+      if(queue)pendingSharedSettings=plan.shared;
+    }
+    if(Object.keys(plan.updates).length){
+      photos=photos.map(photo=>Object.hasOwn(plan.updates,photo.id)?{...photo,settings:plan.updates[photo.id]}:photo);
+      if(queue)pendingPhotoSettings={...pendingPhotoSettings,...plan.updates};
+    }
+  }
+
+  function stageSettings(value:RenderSettings,explicit:ExplicitSettingsEdit={},policy:PhotoEditPolicy={}):boolean {
+    if(!initialized||!desktop||validateLocal(value)||(sameSettings(value,saveBaseline)&&!Object.keys(explicit).length))return false;
+    let plan:SettingsPlan|null;
+    try{plan=planSettings(value,explicit,{matchWatermarkKind:true,...policy});}
+    catch(error){
+      const message=errorMessage(error);
+      if(!notices.includes(message))notices=[...notices,message];
+      settings=clone(saveBaseline);syncControls();return false;
+    }
+    if(!plan){saveBaseline=clone(value);return false;}
+    trackSettings(new Set(Object.keys(plan.updates)));
+    applySettingsPlan(plan,true);
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => void flushSettingsSave(), 500);
+    return true;
+  }
+
+  async function persistSettings(updates:PhotoUpdates,shared:RenderSettings|null):Promise<SettingsCommit>{
+    if(Object.keys(updates).length)return invoke<SettingsCommit>('set_photo_settings',{updates,shared});
+    if(shared)return {updates:{},shared:await invoke<RenderSettings>('save_settings',{settings:shared})};
+    return {updates:{},shared:null};
+  }
+
+  function adoptSettingsReceipt(sentUpdates:PhotoUpdates,sentShared:RenderSettings|null,receipt:SettingsCommit){
+    if(sentShared&&receipt.shared){
+      sharedSettings=adoptOwnedAssets(sharedSettings,sentShared,receipt.shared);
+      if(pendingSharedSettings)pendingSharedSettings=adoptOwnedAssets(pendingSharedSettings,sentShared,receipt.shared);
+    }
+    const activeId=photoSelection.activeId;
+    const activeHasOwn=editSelected&&!!photos.find(photo=>photo.id===activeId)?.settings;
+    const sentForInspector=activeHasOwn?sentUpdates[activeId]:sentShared;
+    const ownedForInspector=activeHasOwn?receipt.updates[activeId]:receipt.shared;
+    const nextPhotos=photos.map(photo=>{
+      const sent=sentUpdates[photo.id],owned=receipt.updates[photo.id];
+      if(!sent||!owned||!photo.settings)return photo;
+      const next=adoptOwnedAssets(photo.settings,sent,owned);
+      return next===photo.settings?photo:{...photo,settings:next};
+    });
+    if(nextPhotos.some((photo,index)=>photo!==photos[index]))photos=nextPhotos;
+    for(const [id,pending] of Object.entries(pendingPhotoSettings)){
+      const sent=sentUpdates[id],owned=receipt.updates[id];
+      if(pending&&sent&&owned)pendingPhotoSettings[id]=adoptOwnedAssets(pending,sent,owned);
+    }
+    if(sentForInspector&&ownedForInspector){
+      saveBaseline=adoptOwnedAssets(saveBaseline,sentForInspector,ownedForInspector);
+      settings=adoptOwnedAssets(settings,sentForInspector,ownedForInspector);
+    }
+  }
+
+  async function commitAgentSettings(value:RenderSettings,explicit:ExplicitSettingsEdit,frameChange=false){
+    const invalid=validateLocal(value);if(invalid)throw new Error(invalid);
+    const plan=planSettings(value,explicit,{matchWatermarkKind:false});
+    if(!plan)return;
+    // Native commit is the transaction boundary: only acknowledge and mutate
+    // visible state on success. A failed Agent mutation is never queued for retry.
+    const previous=captureSettings(new Set(Object.keys(plan.updates)));
+    const receipt=await persistSettings(plan.updates,plan.shared);
+    commitSettingsStep();
+    applySettingsPlan({...plan,...receipt},false);
+    refreshInspector();
+    cancelFrameTrial();
+    settingsUndo=[...settingsUndo.slice(-49),previous];settingsRedo=[];
+    previousArt=frameChange?previous:null;
+    lastSettingsEditAt=Date.now();
   }
 
   function flushSettingsSave(): Promise<boolean> {
@@ -617,8 +722,8 @@
       pendingSharedSettings = null;
       pendingPhotoSettings = {};
       try {
-        if (Object.keys(updates).length) await invoke('set_photo_settings', { updates, shared });
-        else await invoke('save_settings', { settings: shared });
+        const receipt=await persistSettings(updates,shared);
+        adoptSettingsReceipt(updates,shared,receipt);
       } catch (error) {
         pendingPhotoSettings = { ...updates, ...pendingPhotoSettings };
         pendingSharedSettings ??= shared;
@@ -630,7 +735,10 @@
     return true;
   }
 
-  function schedulePreview(photoId: string, serialized: string) {
+  function schedulePreview(photoId: string, serialized: string, force=false) {
+    const key=JSON.stringify([photoId,serialized]);
+    if(!force&&key===lastPreviewKey)return;
+    lastPreviewKey=key;
     previewRevision += 1;
     const revision = previewRevision;
     const snapshot: RenderSettings = JSON.parse(serialized);
@@ -656,7 +764,7 @@
         queuedPreview = null;
         try {
           const result = await invoke<PreviewResult>('get_preview', { photoId: request.photoId, settings: request.settings });
-          if (request.revision === previewRevision && request.photoId === previewPhotoId && !validateLocal(settings)) {
+          if (request.revision === previewRevision && request.photoId === previewPhotoId) {
             if(result.sourceThumbnail)photos=photos.map(p=>p.id===request.photoId?{...p,thumbnail:result.sourceThumbnail!}:p);
             preview = result;
             previewError = '';
@@ -725,7 +833,7 @@
       // Reselecting an existing source can restore OS file access without adding a duplicate.
       const current = photos.find((photo) => photo.id === selectedId);
       if (previewError && current && !result.errors.length && paths.includes(current.path)) {
-        schedulePreview(selectedId, JSON.stringify(settings));
+        schedulePreview(selectedId, JSON.stringify(displayedSettings),true);
       }
       return result;
     } catch (error) { if(forAgent)throw error;notices = [...notices, errorMessage(error)]; }
@@ -743,6 +851,7 @@
   async function removePhotos(ids: string[]) {
     if (isRunning || starting || importing || undoing || !desktop) throw new Error($t('请等待当前操作完成后再移除照片'));
     const selection=clone(photoSelection);
+    stageSettings(settings);
     if (!(await flushSettingsSave())) throw new Error($t('请先保存设置'));
     const receipt=await invoke<RemovalReceipt|null>('remove_photos', { ids,selection });
     if(!receipt)throw new Error($t('当前照片列表已变化，请重试'));
@@ -760,8 +869,10 @@
   async function undoPhotoRemoval(){
     if(!desktop||!initialized||loading||isRunning||starting||importing||undoing||!removalUndo.length)return;
     const entry=removalUndo[removalUndo.length-1];
+    stageSettings(settings);
     undoing=true;historyAction='undo';undoError='';
     try{
+      if (!(await flushSettingsSave())) throw new Error($t('请先保存设置'));
       const result=await invoke<{photos:Photo[];idMap:Record<string,string>;catalogRevision?:number;photoSelection?:PhotoSelection}>('undo_photo_removal',{undoId:entry.id});
       photos=result.photos;
       photoSelection=result.photoSelection?restoredPhotoSelection(photos.map(photo=>photo.id),result.photoSelection):restoredPhotoSelection(photos.map(photo=>photo.id),entry.selection,result.idMap);
@@ -781,6 +892,7 @@
   async function redoPhotoRemoval(){
     if(!desktop||!initialized||loading||isRunning||starting||importing||undoing||!removalRedo.length)return;
     const entry=removalRedo[removalRedo.length-1],selection=clone(photoSelection);
+    stageSettings(settings);
     undoing=true;historyAction='redo';undoError='';
     try{
       if (!(await flushSettingsSave())) throw new Error($t('请先保存设置'));
@@ -839,6 +951,11 @@
     } else frameHexError = $t("颜色格式如 #FFFFFF");
   }
 
+  function setBorderPercent(value:number) {
+    settings.borderPercent=value;
+    if(editSelected&&photoSelection.ids.length>1)stageSettings(settings,{borderPercent:value});
+  }
+
   function changeWatermark(kind: WatermarkKind) {
     if (settings.watermark.kind !== kind && kind !== 'none') settings.watermark.sizePercent = kind === 'image' ? 15 : kind === 'camera' ? 2.2 : 3;
     if (kind === 'camera' && settings.watermark.kind !== 'camera') {
@@ -847,6 +964,7 @@
       if (settings.borderPercent > 0) { settings.watermark.region = 'border'; settings.watermark.position = 'bottom-left'; settings.watermark.offsetX = 0; settings.watermark.offsetY = 0; }
     }
     settings.watermark.kind = kind;
+    if(editSelected&&photoSelection.ids.length>1)stageSettings(settings,{watermark:{kind}});
   }
 
   const cameraPresets = [
@@ -889,19 +1007,26 @@
     if (region === 'border') {
       settings.watermark.position = settings.watermark.position.endsWith('left') ? 'bottom-left' : settings.watermark.position.endsWith('right') ? 'bottom-right' : 'bottom-center';
     }
+    if(editSelected&&photoSelection.ids.length>1)stageSettings(settings,{watermark:{region,offsetX:0,offsetY:0,...(region==='border'?{position:settings.watermark.position}:{})}});
   }
 
   async function chooseWatermarkImage() {
     try {
       const path = await open({ multiple: false, title: $t("选择透明 PNG 水印"), filters: [{ name: $t("PNG 水印"), extensions: ['png'] }] });
-      if (typeof path === 'string') settings.watermark.imagePath = path;
+      if (typeof path === 'string') {
+        settings.watermark.imagePath = path;
+        if(editSelected&&photoSelection.ids.length>1)stageSettings(settings,{watermark:{kind:'image',imagePath:path}});
+      }
     } catch (error) { notices = [...notices, errorMessage(error)]; }
   }
 
   async function chooseFont() {
     try {
       const path = await open({ multiple: false, title: $t("选择水印字体"), filters: [{ name: $t("字体"), extensions: ['ttf', 'otf', 'ttc', 'otc'] }] });
-      if (typeof path === 'string') { settings.watermark.fontPath = path; settings.watermark.fontFamily = null; }
+      if (typeof path === 'string') {
+        settings.watermark.fontPath = path; settings.watermark.fontFamily = null;
+        if(editSelected&&photoSelection.ids.length>1)stageSettings(settings,{watermark:{fontPath:path,fontFamily:null}});
+      }
     } catch (error) { notices = [...notices, errorMessage(error)]; }
   }
 
@@ -916,7 +1041,13 @@
   function applyPreset(id: string) {
     selectedPreset = id;
     const preset = presets.find((item) => item.id === id);
-    if (preset) { settings = clone(preset.settings); syncControls(); }
+    if (preset) {
+      commitSettingsStep();
+      settings=clone(preset.settings);
+      stageSettings(settings,{...frameStyleEdit(settings),watermark:settings.watermark});
+      commitSettingsStep();
+      syncControls();
+    }
   }
 
   async function savePreset() {
@@ -1043,6 +1174,7 @@
     const offset=typeof args.offset==='number'?args.offset:0,limit=typeof args.limit==='number'?args.limit:200;
     return {photoCount:photos.length,photos:photos.slice(offset,offset+limit).map(({id,name,path,width,height})=>({id,name,path,width,height})),
       nextOffset:offset+limit<photos.length?offset+limit:null,selection:clone(photoSelection),settings:clone(settings),editScope:editSelected?'selected':'shared',
+      previewSettings:clone(effectiveSettings),previewUsesOwnSettings:sharedOverridePreview,
       history:{undoCount:removalUndo.length,redoCount:removalRedo.length},importing,importingCount,pendingImportCount:pendingImports.length,
       export:batch?{id:batch.id,status:batch.status,total:batch.items.length,completed:completedCount,failed:failedCount}:null};
   }
@@ -1064,6 +1196,7 @@
       if(mutating){
         if(agentBusy||importing||choosingPhotos||starting||undoing||scopeBusy||pendingImports.length)throw new Error($t('请等待当前操作完成后再使用 Agent'));
         requireAgentWindow();
+        stageSettings(settings);
         agentBusy=true;ownsMutation=true;await tick();
         if (!(await flushSettingsSave())) throw new Error($t("请先保存设置"));
         await agentWait(()=>!selectionSaving&&!pendingSelectionSave);
@@ -1085,8 +1218,7 @@
           const next={...clone(settings),ratio:clone(style.ratio),borderPercent:style.borderPercent,frameColor:style.frameColor,decoration:clone(style.decoration),artwork:style.artwork?clone(style.artwork):null};
           const invalid=validateLocal(next);if(invalid)throw new Error(invalid);
           requireAgentWindow();
-          applyFrameTemplate(next);stageSettings(settings);
-          if (!(await flushSettingsSave())) throw new Error($t('请先保存设置'));
+          await commitAgentSettings(next,frameStyleEdit(style),true);
           await tick();result=agentWorkspace();break;
         }
         case 'margin_import_photos':{
@@ -1115,19 +1247,20 @@
           const next=patchAgentSettings(settings,args.patch,fonts),invalid=validateLocal(next);
           if(invalid)throw new Error(invalid);
           requireAgentWindow();
-          settings=next;stageSettings(settings);syncControls();
-          if (!(await flushSettingsSave())) throw new Error($t('请先保存设置'));
+          await commitAgentSettings(next,explicitAgentEdit(args.patch,next));
           await tick();result=agentWorkspace();break;
         }
         case 'margin_get_preview':{
           if(agentBusy||importing)throw new Error($t('请等待当前操作完成后再使用 Agent'));
           if(!selectedPhoto)throw new Error($t('请先选择一张照片。'));
+          if(trialSettings||comparingOriginal)throw new Error($t('请先应用或取消正在试用的边框'));
           await tick();await agentWait(()=>!!previewError||!previewLoading&&!previewInFlight&&!queuedPreview&&!!preview,45000);
           if(previewError||!preview)throw new Error(previewError||$t('预览暂不可用'));
           result={dataUrl:preview.dataUrl,width:preview.width,height:preview.height,photoId:selectedId,photoBounds:preview.photoBounds,warning:preview.warning??null};break;
         }
         case 'margin_export_photos':{
           if(isRunning)throw new Error($t('请等待当前导出完成'));
+          if(trialSettings||comparingOriginal)throw new Error($t('请先应用或取消正在试用的边框'));
           const directory=absoluteLocalPath(args.outputDirectory),scope=args.scope??'selected';
           const ids=scope==='all'?order:scope==='ids'?catalogIds(args.ids,order):[...selectedIds];
           if(!ids.length)throw new Error($t('请先导入并选择要导出的照片。'));
@@ -1221,17 +1354,17 @@
   {/if}
 
   {#if agentBusy}<div class="agent-activity" role="status"><LoaderCircle size={12} class="spin"/>{$t('Agent 正在更新照片…')}</div>{/if}
-  <div class="workspace" inert={agentBusy}>
+  <div class="workspace" inert={agentBusy||undoing}>
     <main class="content-area">
       <div class="viewer">
         {#if loading}
           <div class="empty-state"><LoaderCircle size={25} class="spin" /><p>{$t("正在载入工作区")}</p></div>
         {:else if selectedPhoto}
           {#key selectedPhoto.id}
-            <PhotoViewport photo={selectedPhoto} preview={comparingOriginal ? null : preview} picking={pickingColor} loading={previewLoading} oncolor={setFrameColor} onclose={closePicker} markBox={watermarkPreviewVisible&&!trialSettings&&!comparingOriginal?markBox:null} onmarkdrag={dragMark}>
+            <PhotoViewport photo={selectedPhoto} preview={comparingOriginal ? null : preview} picking={pickingColor} loading={previewLoading} oncolor={setFrameColor} onclose={closePicker} markBox={watermarkPreviewVisible&&!sharedOverridePreview&&!trialSettings&&!comparingOriginal?markBox:null} onmarkdrag={dragMark}>
               <svelte:fragment slot="heading"><div class="file-heading"><span title={selectedPhoto.path}>{selectedPhoto.name}</span><span class="source-size">{selectedPhoto.width} × {selectedPhoto.height}</span><button type="button" class="remove-photo" title={$t('从目录中移除照片（Backspace / Delete）')} aria-label={$t(selectedIds.length>1?'移除选中的 {0} 张照片':'移除当前照片',{0:selectedIds.length})} aria-keyshortcuts="Backspace Delete" disabled={isRunning||starting||importing||!selectedIds.length} on:click={()=>photoActions.requestRemoval(selectedIds)}><Trash2 size={15}/><span>{$t(selectedIds.length>1?'移除 {0} 张':'移除照片',{0:selectedIds.length})}</span></button></div></svelte:fragment>
               {#if watermarkPreviewVisible}
-                <WatermarkDetail photo={selectedPhoto} settings={displayedSettings} overview={preview} hidden={comparingOriginal} collapsed={watermarkPreviewCollapsed} oncollapse={collapseWatermarkPreview} onlimits={(value)=>offsetLimits=value} onbox={(box)=>{if(!markDragStart)markBox=box;}}/>
+                <WatermarkDetail photo={selectedPhoto} settings={displayedSettings} overview={preview} hidden={comparingOriginal} collapsed={watermarkPreviewCollapsed} oncollapse={collapseWatermarkPreview} onlimits={(value)=>offsetLimits=sharedOverridePreview||trialSettings?null:value} onbox={(box)=>{if(!markDragStart)markBox=box;}}/>
               {/if}
             </PhotoViewport>
           {/key}
@@ -1267,7 +1400,7 @@
         <button type="button" class:active={!editSelected} aria-pressed={!editSelected} disabled={!selectedPhoto||scopeBusy||isRunning} on:click={() => setSettingsScope(false)}>{$t('共享设置')}</button>
         <button type="button" class:active={editSelected} aria-pressed={editSelected} disabled={!selectedPhoto||scopeBusy||isRunning} on:click={() => setSettingsScope(true)}>{$t(selectedIds.length>1?'编辑选中 {0} 张':'仅这张',{0:selectedIds.length})}</button>
       </div>
-      {#if !editSelected && selectedPhoto?.settings}<p class="scope-note">{$t('当前照片仍使用单独设置')}</p>{/if}
+      {#if sharedOverridePreview}<p class="scope-note" role="status">{$t('当前照片的预览和导出均使用单独设置；共享调整只影响没有单独设置的照片。')}</p>{/if}
       {#if hasScopedOverrides}<button type="button" class="text-button restore-shared" disabled={scopeBusy||isRunning} on:click={restoreSharedSettings}>{$t('恢复共享设置')}</button>{/if}
       <div id="frame-panel" inert={scopeBusy} class="setting-section inspector-panel" role="tabpanel" tabindex="0" aria-labelledby="inspector-frame" hidden={inspectorTab!=='frame'}>
         <section class="quick-templates" aria-label={$t('快速试框')}>
@@ -1299,8 +1432,8 @@
           <button type="button" class:active={ratioMode==='custom'} aria-pressed={ratioMode==='custom'} on:click={()=>changeRatio('custom')}>{$t('自定义')}</button>
         </div>
         {#if ratioMode === 'custom'}<div class="custom-ratio"><label><span>{$t("宽")}</span><input type="number" min="0.01" step="0.1" value={customWidth} on:input={(event) => changeCustomRatio('width', event.currentTarget.valueAsNumber)} aria-label={$t("自定义比例宽")} /></label><span>:</span><label><span>{$t("高")}</span><input type="number" min="0.01" step="0.1" value={customHeight} on:input={(event) => changeCustomRatio('height', event.currentTarget.valueAsNumber)} aria-label={$t("自定义比例高")} /></label></div>{/if}
-        <div class="field-title"><label class="field-label" for="border-range">{$t("边框比例")}</label><div class="number-with-unit"><input aria-label={$t("边框百分比")} type="number" min="0" max="30" step="0.5" bind:value={settings.borderPercent} /><span>%</span></div></div>
-        <input id="border-range" type="range" min="0" max="30" step="0.5" bind:value={settings.borderPercent} />
+        <div class="field-title"><label class="field-label" for="border-range">{$t("边框比例")}</label><div class="number-with-unit"><input aria-label={$t("边框百分比")} type="number" min="0" max="30" step="0.5" value={settings.borderPercent} on:input={(event)=>setBorderPercent(event.currentTarget.valueAsNumber)} /><span>%</span></div></div>
+        <input id="border-range" type="range" min="0" max="30" step="0.5" value={settings.borderPercent} on:input={(event)=>setBorderPercent(event.currentTarget.valueAsNumber)} />
         <p class="field-help">{$t("按照片短边计算最小留白；指定比例时，部分方向会增加留白")}</p>
         <label class="field-label color-label" for="frame-hex">{$t("边框颜色")}</label>
         <div class="color-palette" role="group" aria-label={$t('边框色盘')}>{#each palette.slice(0,8) as [color,name]}<button style:background={color} class:active={settings.frameColor.toUpperCase()===color} class="palette-swatch" aria-label={`${$t(name)} ${color}`} aria-pressed={settings.frameColor.toUpperCase()===color} title={$t(name)} on:click={()=>setFrameColor(color)}></button>{/each}</div>
@@ -1353,7 +1486,7 @@
       </div>
       {#if namingPreset}<form class="preset-form" on:submit|preventDefault={savePreset}><input aria-label={$t("预设名称")} bind:value={presetName} maxlength="40" placeholder={$t("预设名称")} /><button class="button secondary compact" type="submit" disabled={savingPreset || !presetName.trim()}>{savingPreset ? $t("保存中") : $t("保存")}</button></form>{/if}
         </details>
-        {#if previousArt}<button class="text-button" on:click={undoArt}><RotateCcw size={12} />{$t('撤销上次配框')}</button>{/if}
+        {#if previousArt&&!pendingUndo&&settingsUndo.at(-1)===previousArt}<button class="text-button" on:click={undoArt}><RotateCcw size={12} />{$t('撤销上次配框')}</button>{/if}
       </div>
 
       <div id="watermark-panel" inert={scopeBusy} class="setting-section watermark-section inspector-panel" role="tabpanel" tabindex="0" aria-labelledby="inspector-watermark" hidden={inspectorTab!=='watermark'}>
@@ -1386,7 +1519,7 @@
           </div>
           <div class="font-settings">
             {#if settings.watermark.kind === 'text' || settings.watermark.kind === 'camera'}
-              <FontPicker {fonts} selected={settings.watermark.fontFamily} onchange={(font)=>{settings.watermark.fontPath=font?.path||null;settings.watermark.fontFamily=font?.family??null;}}/>
+              <FontPicker {fonts} selected={settings.watermark.fontFamily} onchange={(font)=>{settings.watermark.fontPath=font?.path||null;settings.watermark.fontFamily=font?.family??null;if(editSelected&&photoSelection.ids.length>1)stageSettings(settings,{watermark:{fontPath:settings.watermark.fontPath,fontFamily:settings.watermark.fontFamily}});}}/>
               {#if fontsLoading}<p class="field-help">{$t("正在读取本机字体…")}</p>{/if}
               {#if fontsError}<p class="field-error">{$t(fontsError)}</p><button class="text-button" on:click={loadFonts}>{$t("重新读取字体")}</button>{/if}
               <div class="font-row"><button class="file-button" disabled={!desktop} on:click={chooseFont}><span>{$t("导入 TTF / OTF / TTC 字体")}</span><Plus size={13} /></button></div>
@@ -1490,7 +1623,7 @@
       <label class="field-label" for="long-edge">{$t('输出长边')}</label><select id="long-edge" value={longEdgeMode} on:change={event=>setLongEdge(event.currentTarget.value)}><option value="original">{$t('保留原始像素')}</option><option value="2560">{$t('最多 2560 px')}</option><option value="3840">{$t('最多 3840 px')}</option><option value="custom">{$t('自定义')}</option></select>
       {#if longEdgeMode==='custom'}<div class="custom-edge"><input aria-label={$t('自定义输出长边')} type="number" min="64" max="32768" step="1" bind:value={customLongEdge} on:input={event=>settings.export.longEdge=event.currentTarget.valueAsNumber}/><span>px</span></div>{/if}<p class="field-help">{$t('按最终画布缩小，不放大照片；统一导出为 sRGB')}</p>
     </details>
-    {#if preview && !previewLoading && !trialSettings && !uniformExport && exportPhotoIds.includes(selectedId) && (editSelected || !selectedPhoto?.settings)}<div class="export-dimensions"><span>{$t('当前照片预计尺寸')}</span><span>{preview.width.toLocaleString()} × {preview.height.toLocaleString()} px</span></div>{/if}
+    {#if preview && !previewLoading && !trialSettings && !uniformExport && exportPhotoIds.includes(selectedId)}<div class="export-dimensions"><span>{$t('当前照片预计尺寸')}</span><span>{preview.width.toLocaleString()} × {preview.height.toLocaleString()} px</span></div>{/if}
     {#if localError}<p class="field-error" role="alert">{localError}</p>{/if}
     {#if exportError}<p class="field-error export-error" role="alert">{$t(exportError)}</p>{/if}
     <p class="field-help">{$t('另存副本，保留原图')}</p>
@@ -1504,7 +1637,7 @@
   <footer><span>{$t("每张照片独立处理，失败不影响其他照片")}</span>{#if batch?.outputDirectory}<button class="button secondary compact" on:click={() => batch && revealPath(batch.outputDirectory)}><FolderOpen size={14} />{$t("打开文件夹")}</button>{/if}</footer>
 </dialog>
 
-{#if modelOpen && selectedPhoto}<ModelPanel bind:initialMode={modelMode} bind:imageTarget={modelTarget} initialConfig={stagedModelConfig} onconfigure={configureModels} photo={selectedPhoto} count={photos.length} baseSettings={settings} onsavetemplate={saveSuggestedFrame} bind:apiKey={sessionApiKey} bind:apiOrigin={sessionApiOrigin} bind:imageApiKey={sessionImageApiKey} bind:imageApiOrigin={sessionImageApiOrigin} onapply={applyArt} onclose={()=>{modelOpen=false;stagedModelConfig=null;}} />{/if}
+{#if modelOpen && selectedPhoto}<ModelPanel bind:initialMode={modelMode} bind:imageTarget={modelTarget} initialConfig={stagedModelConfig} onconfigure={configureModels} photo={selectedPhoto} count={frameAffectedCount} baseSettings={settings} onsavetemplate={saveSuggestedFrame} bind:apiKey={sessionApiKey} bind:apiOrigin={sessionApiOrigin} bind:imageApiKey={sessionImageApiKey} bind:imageApiOrigin={sessionImageApiOrigin} onapply={applyArt} onclose={()=>{modelOpen=false;stagedModelConfig=null;}} />{/if}
 {#if modelsConfigOpen}<ModelsConfig initialConfig={stagedModelConfig} target={modelConfigTarget} bind:apiKey={sessionApiKey} bind:apiOrigin={sessionApiOrigin} bind:imageApiKey={sessionImageApiKey} bind:imageApiOrigin={sessionImageApiOrigin} onsaved={value=>stagedModelConfig=clone(value)} onclose={closeModelConfig}/>{/if}
 
 {#if templatesOpen}<FrameTemplates photo={selectedPhoto} currentPreview={preview?.dataUrl||''} currentSettings={settings} templates={frameTemplates} draft={templateDraft} initialName={templateName} initialCategory={templateCategory} onsave={saveFrameTemplate} ondelete={deleteFrameTemplate} onapply={applyFrameTemplate} onclose={()=>templatesOpen=false}/>{/if}
