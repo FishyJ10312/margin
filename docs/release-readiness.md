@@ -1,5 +1,10 @@
 # Margin 0.11.3 release candidate audit
 
+The installed trial has since advanced to 0.11.4. The current evidence audit and
+remaining gates are in [0.11.4 release gaps](release-gaps-0.11.4.md). The named
+0.11.3 artifacts and table below remain historical evidence; they do not certify
+the current version for public release.
+
 Updated 2026-11-17. This is a local acceptance record, not a public release announcement.
 “Passed” applies only to the evidence and platform named in that row.
 The latest local artifact is the separately identified **privacy-review-20261117**
