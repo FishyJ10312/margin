@@ -2,6 +2,22 @@
 
 Margin 是本机照片边框与水印工具。源码仓库：[FishyJ10312/margin](https://github.com/FishyJ10312/margin)。
 
+## Download / 下载安装
+
+[GitHub Release · v0.11.4](https://github.com/FishyJ10312/margin/releases/tag/v0.11.4) · Download the installer for your computer:
+
+| Platform / 平台 | File / 安装包 |
+| --- | --- |
+| macOS · Apple Silicon (M-series) | [Download DMG](https://github.com/FishyJ10312/margin/releases/download/v0.11.4/Margin-0.11.4-macos-arm64.dmg) |
+| macOS · Intel | [Download DMG](https://github.com/FishyJ10312/margin/releases/download/v0.11.4/Margin-0.11.4-macos-x86_64.dmg) |
+| Windows · Intel / AMD x64 | [Download setup.exe](https://github.com/FishyJ10312/margin/releases/download/v0.11.4/Margin-0.11.4-windows-x64-setup.exe) |
+
+Mac：打开 DMG，将 Margin 拖到 Applications。Windows：运行 setup.exe 并完成安装。普通加框、水印、批量导出无需安装 Node、Rust 或配置模型。AI 艺术边框功能可选。
+
+本次为公开预览版，尚未获得 Apple 公证或 Windows Authenticode 签名；首次打开可能出现系统安全提示。请核对 Release 附带的 SHA256 校验值，并仅在信任来源时安装。
+
+Three platform builds passed the [installer and native smoke tests](https://github.com/FishyJ10312/margin/actions/runs/45120936590): actual install/copy, launch, JPG/PNG/HEIC import, preview, Chinese watermark, export and original-file preservation. These checks ran on GitHub-hosted test machines, not every end-user OS version.
+
 0.11.4 合并 MCP 安全重试、超时后保留任务锁、窗口冲突复核，以及默认并行测试的资源隔离与读取握手修复。安全重试需要复用相同 `operationId`，仅在同次软件运行内有效。Mac 更新沿用现有应用身份、照片目录、设置与模型授权存储。详见 [本次更新](docs/update-0.11.4.md)。
 
 通过顶栏的 **Agent 连接**，可以用本机 Codex、Claude Desktop 或 Claude Code 查看照片、调整边框和水印、批量导出。第一次使用可以跟着 [MCP 新手教程](docs/agent-first-run.zh-CN.md) 完成连接和首批导出。开发者可查阅 [工具列表与协议说明](docs/agent-mcp-0.11.3.md)。
