@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: margin-release-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   CARGO_BUILD_JOBS: "2"
