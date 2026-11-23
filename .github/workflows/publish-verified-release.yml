@@ -1,0 +1,47 @@
+name: Publish verified Margin release
+
+on:
+  workflow_run:
+    workflows: ["Margin desktop installer release"]
+    types: [completed]
+    branches: [release/v0.11.4]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'release/v0.11.4' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_HEAD: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - name: Verify all three assets and publish the prerelease
+        run: |
+          set -euo pipefail
+          tag=v0.11.4
+          actual="$(gh release view "$tag" --json isDraft,isPrerelease,targetCommitish,assets)"
+          printf '%s' "$actual" | jq -e --arg sha "$RELEASE_HEAD" '
+            .isDraft == true and .isPrerelease == true and
+            .targetCommitish == $sha and
+            ([.assets[].name] | sort) ==
+            (["Margin-0.11.4-macos-arm64.dmg","Margin-0.11.4-macos-x86_64.dmg","Margin-0.11.4-windows-x64-setup.exe","SHA256SUMS.txt"] | sort)' >/dev/null
+          mkdir "$RUNNER_TEMP/verified-assets"
+          gh release download "$tag" --dir "$RUNNER_TEMP/verified-assets"
+          cd "$RUNNER_TEMP/verified-assets"
+          test "$(wc -l < SHA256SUMS.txt | tr -d ' ')" -eq 3
+          test "$(grep -Ec '^[0-9a-f]{64}  Margin-0\.11\.4-(macos-arm64\.dmg|macos-x86_64\.dmg|windows-x64-setup\.exe)$' SHA256SUMS.txt)" -eq 3
+          test "$(awk '{print $2}' SHA256SUMS.txt | sort -u | wc -l | tr -d ' ')" -eq 3
+          sha256sum -c SHA256SUMS.txt
+          gh release edit "$tag" --draft=false --prerelease
+          gh release view "$tag" --json isDraft,isPrerelease,tagName,url,assets |
+            jq -e '.isDraft == false and .isPrerelease == true and (.assets | length) == 4'
