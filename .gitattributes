@@ -1,0 +1,4 @@
+# The release builder verifies exact upstream notice/archive bytes on both OSes.
+licenses/*.txt -text
+native-sources/*.tar.gz -text
+scripts/*.sh text eol=lf

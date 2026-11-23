@@ -14,11 +14,11 @@ root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
 parser.add_argument("metadata", type=Path)
 args = parser.parse_args()
-metadata = json.loads(args.metadata.read_text())
-version = json.loads((root / 'package.json').read_text())['version']
+metadata = json.loads(args.metadata.read_text(encoding="utf-8"))
+version = json.loads((root / 'package.json').read_text(encoding="utf-8"))['version']
 if not any(p['name'] == 'liubai' and not p['source'] and p['version'] == version for p in metadata['packages']):
     raise SystemExit('Cargo inventory does not match the current app version')
-fallbacks = json.loads((root / "licenses/upstream-sources.json").read_text())
+fallbacks = json.loads((root / "licenses/upstream-sources.json").read_text(encoding="utf-8"))
 prefixes = ("LICENSE", "LICENCE", "COPYING", "NOTICE", "COPYRIGHT")
 sections = ["Margin third-party dependency notices\n\n"
             "Exact Cargo dependency inventory, including build dependencies.\n"
@@ -57,7 +57,7 @@ for package in sorted(metadata["packages"], key=lambda p: (p["name"], p["version
 
 for name in ("svelte", "clsx", "esm-env", "@lucide/svelte", "@tauri-apps/api", "@tauri-apps/plugin-dialog", "@tauri-apps/plugin-opener"):
     directory = root / "node_modules" / name
-    package = json.loads((directory / "package.json").read_text())
+    package = json.loads((directory / "package.json").read_text(encoding="utf-8"))
     notices = sorted(p for p in directory.iterdir() if p.is_file() and p.name.upper().startswith(prefixes))
     # The two JS plugins use an SPDX declaration referring to the Tauri license
     # texts already collected from their matching Rust plugin crates.
@@ -65,10 +65,10 @@ for name in ("svelte", "clsx", "esm-env", "@lucide/svelte", "@tauri-apps/api", "
         missing.append(name)
     sections.append(f"\n{'=' * 72}\n{name} {package['version']}\nLicense: {package.get('license')}\n")
     for notice in notices:
-        sections.append(f"\n--- {notice.name} ---\n{notice.read_text()}\n")
+        sections.append(f"\n--- {notice.name} ---\n{notice.read_text(encoding='utf-8')}\n")
     inventory.append({"name": name, "version": package["version"], "license": package.get("license"), "notices": [p.name for p in notices]})
 if missing:
     raise SystemExit("Missing notice texts: " + ", ".join(missing))
-(root / "licenses/THIRD-PARTY-NOTICES.txt").write_text("".join(sections))
-(root / "licenses/dependency-inventory.json").write_text(json.dumps(inventory, indent=2) + "\n")
+(root / "licenses/THIRD-PARTY-NOTICES.txt").write_text("".join(sections), encoding="utf-8")
+(root / "licenses/dependency-inventory.json").write_text(json.dumps(inventory, indent=2) + "\n", encoding="utf-8")
 print(json.dumps({"packages": len(inventory), "noticeBytes": (root / "licenses/THIRD-PARTY-NOTICES.txt").stat().st_size}))
