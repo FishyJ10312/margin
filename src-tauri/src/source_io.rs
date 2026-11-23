@@ -307,7 +307,7 @@ fn spawn_worker() -> Result<Worker, String> {
     let mut command = Command::new(std::env::current_exe().map_err(|_| INTERRUPTED)?);
     #[cfg(test)]
     command
-        .args(["--exact", "source_io::tests::worker_entry", "--nocapture"])
+        .args(["--exact", "source_io::worker_tests::worker_entry", "--nocapture"])
         .env("MARGIN_TEST_SOURCE_WORKER", "1");
     #[cfg(not(test))]
     command.arg(WORKER_FLAG);
@@ -663,6 +663,35 @@ pub(crate) fn fault_wait(path: &std::path::Path) {
     }
 }
 
+// The subprocess entry is needed on every platform. FIFO fault-injection
+// tests below are Unix-only, but the ordinary binary pipe protocol is not.
+#[cfg(test)]
+mod worker_tests {
+    use super::*;
+
+    #[test]
+    fn worker_entry() {
+        if std::env::var_os("MARGIN_TEST_SOURCE_WORKER").is_some() {
+            worker_loop();
+        }
+    }
+
+    #[test]
+    fn healthy_worker_reads_unicode_path_and_binary_chunks() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("照片-reader.bin");
+        let expected: Vec<u8> = (0..CHUNK * 2 + 13).map(|i| (i % 256) as u8).collect();
+        fs::write(&path, &expected).unwrap();
+        for _ in 0..2 {
+            let data = read(&path).unwrap();
+            assert_eq!(data.bytes, expected);
+            assert_eq!(data.metadata.len, expected.len() as u64);
+            assert_eq!(data.metadata.canonical, fs::canonicalize(&path).unwrap());
+            assert!(data.metadata.is_file);
+        }
+    }
+}
+
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
@@ -673,13 +702,6 @@ mod tests {
         sync::mpsc,
         time::{Duration, Instant},
     };
-
-    #[test]
-    fn worker_entry() {
-        if std::env::var_os("MARGIN_TEST_SOURCE_WORKER").is_some() {
-            worker_loop();
-        }
-    }
 
     #[test]
     fn queued_deadline_does_not_start_another_reader_and_retry_recovers() {
