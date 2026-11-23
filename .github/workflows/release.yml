@@ -1,0 +1,137 @@
+name: Margin desktop installer release
+
+on:
+  push:
+    branches:
+      - release/v0.11.4
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: margin-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_BUILD_JOBS: "2"
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  MARGIN_NATIVE_JOBS: "2"
+
+jobs:
+  macos:
+    name: macOS ${{ matrix.arch }} installer and native smoke test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check host and dependencies
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = "${{ matrix.arch }}"
+          rustup default stable
+          command -v cmake
+          command -v pkg-config
+          python3 -m pip install Pillow
+      - name: Build and verify the native app
+        run: bash scripts/build-macos.sh "$RUNNER_TEMP/margin-package"
+      - name: Create and inspect the exact DMG
+        run: |
+          set -euo pipefail
+          python3 scripts/qa-installer-macos.py --app "$RUNNER_TEMP/margin-package/Margin.app" --out "$RUNNER_TEMP/margin-dmg"
+          python3 scripts/qa-release-install.py --app "$RUNNER_TEMP/margin-dmg/copied/Margin.app"
+          mkdir -p "$RUNNER_TEMP/release-assets"
+          cp "$RUNNER_TEMP/margin-dmg/Margin-0.11.4-${{ matrix.arch }}-local-candidate.dmg" "$RUNNER_TEMP/release-assets/Margin-0.11.4-macos-${{ matrix.arch }}.dmg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: margin-macos-${{ matrix.arch }}
+          path: ${{ runner.temp }}/release-assets/*.dmg
+          if-no-files-found: error
+          retention-days: 7
+
+  windows:
+    name: Windows x64 installer and native smoke test
+    runs-on: windows-2025
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify Windows toolchain
+        shell: pwsh
+        run: |
+          rustup default stable-x86_64-pc-windows-msvc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pip install Pillow
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build and package Windows
+        shell: pwsh
+        run: ./scripts/build-windows.ps1 -Destination "$env:RUNNER_TEMP/release-assets"
+      - name: Test the exact setup executable
+        shell: pwsh
+        run: python scripts/qa-release-install.py --installer "$env:RUNNER_TEMP/release-assets/Margin-0.11.4-windows-x64-setup.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: margin-windows-x64
+          path: ${{ runner.temp }}/release-assets/*.exe
+          if-no-files-found: error
+          retention-days: 7
+
+  draft:
+    # Never expose a partial set of installers. The owner can publish only when
+    # both platforms pass; public/private visibility is a separate decision.
+    name: Assemble the verified release draft
+    if: github.ref == 'refs/heads/release/v0.11.4'
+    needs: [macos, windows]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: margin-*
+          path: release-assets
+          merge-multiple: true
+      - name: Generate checksums and create a draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd release-assets
+          test -f Margin-0.11.4-macos-arm64.dmg
+          test -f Margin-0.11.4-macos-x86_64.dmg
+          test -f Margin-0.11.4-windows-x64-setup.exe
+          sha256sum Margin-0.11.4-macos-arm64.dmg Margin-0.11.4-macos-x86_64.dmg Margin-0.11.4-windows-x64-setup.exe > SHA256SUMS.txt
+          if gh release view v0.11.4 >/dev/null 2>&1; then
+            echo "A release with this tag already exists; refusing to replace its assets."
+            exit 1
+          fi
+          gh release create v0.11.4 --target "$GITHUB_SHA" --draft --prerelease --title "Margin 0.11.4 · Public preview" --notes-file ../docs/release-0.11.4-notes.md Margin-0.11.4-macos-arm64.dmg Margin-0.11.4-macos-x86_64.dmg Margin-0.11.4-windows-x64-setup.exe SHA256SUMS.txt
