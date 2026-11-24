@@ -1,7 +1,7 @@
 <script lang="ts">
   import {t} from './i18n';
   import {onMount,onDestroy} from 'svelte';
-  import {Minus,Plus,Scan,Move} from '@lucide/svelte';
+  import {Minus,Plus,Scan} from '@lucide/svelte';
   import ColorSampler from './ColorSampler.svelte';
   import type {Photo,PreviewResult} from './types';
   export let photo:Photo, preview:PreviewResult|null=null,picking=false,loading=false;
@@ -44,7 +44,7 @@
   let frame=0,disposed=false,observer:ResizeObserver;
   $: fullW=preview?.width??photo.width;
   $: fullH=preview?.height??photo.height;
-  $: fitZoom=Math.min((width-48)/fullW,(height-48)/fullH,1);
+  $: fitZoom=Math.min((width-64)/fullW,(height-120)/fullH,1);
   $: if(fit)zoom=Math.max(.005,fitZoom);
   $: percent=Math.round(zoom*1000)/10;
   $: if(image&&fullW&&fullH&&zoom)paint();
@@ -59,15 +59,6 @@
   onMount(()=>{observer=new ResizeObserver(entries=>{const r=entries[0].contentRect;width=r.width;height=r.height;paint();});observer.observe(host);host.addEventListener('wheel',wheel,{passive:false});});
   onDestroy(()=>{disposed=true;cancelAnimationFrame(frame);observer?.disconnect();host?.removeEventListener('wheel',wheel);});
 </script>
-<div class="zoom-toolbar" aria-label={$t("照片缩放")}>
-  <div class="viewport-heading"><slot name="heading" /></div>
-  <button class="icon-button" aria-label={$t("缩小照片")} on:click={()=>setZoom(zoom/1.15)}><Minus size={14}/></button>
-  <input aria-label={$t("照片缩放百分比")} type="number" min="0.5" max="400" step="0.1" value={percent} on:change={(e)=>setZoom(e.currentTarget.valueAsNumber/100)}/><span>%</span>
-  <button class="icon-button" aria-label={$t("放大照片")} on:click={()=>setZoom(zoom*1.15)}><Plus size={14}/></button>
-  <input class="zoom-range" aria-label={$t("连续缩放照片")} type="range" min="-5.2983" max="1.3863" step="0.005" value={Math.log(zoom)} on:input={(e)=>setZoom(Math.exp(e.currentTarget.valueAsNumber))}/>
-  <button class="text-button" on:click={fitView} aria-pressed={fit}><Scan size={13}/>{$t("适应")}</button>
-  <button class="text-button" on:click={()=>setZoom(1)}>100%</button>
-</div>
 <div bind:this={host} class="canvas photo-viewport" class:dragging>
   <img bind:this={image} class="rendered-photo zoom-photo" src={preview?.dataUrl||photo.thumbnail} alt={$t("{0} 的加框预览", {0:photo.name})} on:load={paint}/>
   <button bind:this={panSurface} class="pan-surface" aria-label={$t("照片视图，拖动平移，滚轮缩放，0 适应，1 原始大小")} on:pointerdown={down} on:pointermove={move} on:lostpointercapture={()=>{drag=null;dragging=false;}} on:keydown={key}></button>
@@ -75,20 +66,29 @@
   <slot />
   {#if picking&&preview}<ColorSampler {photo} {preview} {image} {oncolor} {onclose}/>{/if}
   {#if loading}<span class="preview-pending">{$t("更新预览")}</span>{/if}
-  {#if !picking}<span class="pan-hint"><Move size={11}/> {$t("滚轮缩放 · 拖动平移")}</span>{/if}
+  {#if !picking}<div class="zoom-toolbar" role="toolbar" aria-label={$t("照片缩放")}>
+    <button class="icon-button" aria-label={$t("缩小照片")} title={$t("缩小（-）")} on:click={()=>setZoom(zoom/1.15)}><Minus size={14}/></button>
+    <label class="zoom-percent" title={$t("输入缩放百分比；按 1 查看原始大小")}><input aria-label={$t("照片缩放百分比")} type="number" min="0.5" max="400" step="0.1" value={percent} on:change={(e)=>setZoom(e.currentTarget.valueAsNumber/100)}/><span>%</span></label>
+    <button class="icon-button" aria-label={$t("放大照片")} title={$t("放大（+）")} on:click={()=>setZoom(zoom*1.15)}><Plus size={14}/></button>
+    <span class="zoom-divider" aria-hidden="true"></span>
+    <button class="text-button zoom-fit" on:click={fitView} aria-pressed={fit} title={$t("适应窗口（0）")}><Scan size={13}/>{$t("适应")}</button>
+    <slot name="tools" />
+  </div>{/if}
 </div>
 <style>
-.zoom-toolbar{display:flex;align-items:center;gap:4px;min-block-size:42px;padding:4px 12px;color:var(--muted);font-size:11px;}
-.viewport-heading{flex:1;min-inline-size:0;margin-inline-end:12px;}
-.zoom-toolbar input[type=number]{width:54px;text-align:right;height:26px;padding:3px;border:1px solid transparent;background:transparent;color:var(--muted);}
-.zoom-toolbar input[type=number]:hover,.zoom-toolbar input[type=number]:focus{border-color:var(--border);background:var(--surface);}
-.zoom-toolbar :global(.text-button){font-size:11px;}
-.zoom-range{max-width:84px;margin:0 6px!important;}
+.zoom-toolbar{position:absolute;z-index:3;left:50%;bottom:14px;transform:translateX(-50%);display:flex;align-items:center;gap:2px;padding:4px;border-radius:10px;font-size:12px;color:var(--muted);white-space:nowrap;}
+.zoom-percent{display:flex;align-items:center;color:var(--ink);}
+.zoom-toolbar input[type=number]{width:48px;text-align:right;height:28px;padding:0 2px;border:1px solid transparent;border-radius:6px;background:transparent;color:inherit;font:inherit;-moz-appearance:textfield;appearance:textfield;}
+.zoom-toolbar input[type=number]::-webkit-inner-spin-button,.zoom-toolbar input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
+.zoom-toolbar input[type=number]:hover,.zoom-toolbar input[type=number]:focus{border-color:var(--border);}
+.zoom-percent span{padding-inline-end:4px;color:var(--muted);}
+.zoom-divider{width:1px;height:16px;margin:0 4px;background:var(--border-strong,#3a3a3a);}
+.zoom-toolbar :global(.text-button){height:28px;padding:0 9px;border-radius:6px;font-size:12px;gap:6px;color:var(--muted);}
+.zoom-toolbar :global(.text-button[aria-pressed=true]){color:var(--accent,#e3a446);}
 .photo-viewport{display:block;position:relative;overflow:hidden;padding:0;isolation:isolate;min-height:100px;touch-action:none;}
 .zoom-photo{position:absolute;top:50%;left:50%;max-width:none;max-height:none;object-fit:fill;pointer-events:none;transform-origin:center;will-change:transform;filter:none;box-shadow:none;transition:none;-webkit-user-select:none;user-select:none;}
 .pan-surface{position:absolute;inset:0;width:100%;height:100%;border:0;background:transparent;cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;}
 .dragging .pan-surface{cursor:grabbing;}
 .mark-handle{position:absolute;z-index:1;padding:0;border:1px dashed transparent;border-radius:2px;background:transparent;cursor:move;touch-action:none;}
-.mark-handle:hover,.mark-handle:focus-visible,.mark-handle.dragging{border-color:var(--primary,#f0a23b);background:rgb(240 162 59 / .08);outline:none;}.pan-hint{position:absolute;bottom:8px;right:12px;font-size:11px;color:var(--muted);display:flex;align-items:center;gap:5px;pointer-events:none;}
-@media(max-width:1050px){.zoom-range{display:none;}.viewport-heading{margin-inline-end:4px;}}
+.mark-handle:hover,.mark-handle:focus-visible,.mark-handle.dragging{border-color:var(--primary,#f0a23b);background:rgb(240 162 59 / .08);outline:none;}
 </style>

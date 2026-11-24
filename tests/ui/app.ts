@@ -9,6 +9,7 @@ import '../../src/gallery.css';
 import '../../src/paper.css';
 import '../../src/darkroom.css';
 import '../../src/light.css';
+import '../../src/workspace.css';
 const source=document.createElement('canvas');source.width=900;source.height=600;const ctx=source.getContext('2d')!;const sky=ctx.createLinearGradient(0,0,0,600);sky.addColorStop(0,'#245d91');sky.addColorStop(.6,'#6eb9cb');sky.addColorStop(1,'#dbbc80');ctx.fillStyle=sky;ctx.fillRect(0,0,900,600);ctx.fillStyle='#f3dba1';ctx.beginPath();ctx.arc(650,110,40,0,Math.PI*2);ctx.fill();const thumbnail=source.toDataURL();
 const settings:RenderSettings={...defaultSettings,watermark:{...defaultSettings.watermark,kind:'text',text:'留白 FishyJ',color:'#182e39',region:'border',marginPercent:1}};settings.borderPercent=12;
 let templates=JSON.parse(localStorage.getItem('liubai.qa.templates')??'[]');const requests:any[]=[];

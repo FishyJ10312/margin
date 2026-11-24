@@ -49,8 +49,10 @@
       if(!alive)return;
       dialog.close('removed');
       await tick();
-      // Native dialog restores focus itself unless the removed thumbnail was its invoker.
-      if(!invoker?.isConnected){
+      // Native dialog restores focus itself unless the removed thumbnail was its
+      // invoker. The toolbar's remove button now targets a different selection,
+      // so continue from the surviving photo there too.
+      if(!invoker?.isConnected||invoker.classList.contains('remove-photo')){
         const next=document.querySelector<HTMLElement>('.filmstrip .thumbnail.active, .empty-state button');
         next?.focus({preventScroll:true});
       }

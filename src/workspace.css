@@ -1,0 +1,221 @@
+/* Margin workspace layer (loaded last).
+   Darkroom direction: neutral charcoal chrome, a deeper stage so the photo
+   dominates, amber "safelight" accent, serif wordmark. Thumbnails run along the
+   bottom of the stage; the inspector keeps the full height on the right.
+   Every colour comes from the tokens below, so dark and light share one layout. */
+:root {
+  --ws-bg: #151515; --ws-panel: #1b1b1b; --ws-raised: #232323; --ws-raised-2: #2b2b2b;
+  --ws-line: #2b2b2b; --ws-line-2: #393939; --ws-canvas: #0f0f0f;
+  --ws-text: #ebe8e2; --ws-muted: #9a968f; --ws-faint: #6f6b65;
+  --accent: #e3a446; --accent-hover: #f0b65f; --accent-soft: rgb(227 164 70 / .13); --on-accent: #1d1406;
+  --ws-ai: #b7a0ff; --ws-ai-soft: rgb(183 160 255 / .10); --ws-own: #b7a0ff;
+  --ws-well: rgb(255 255 255 / .025); --ws-hover: rgb(255 255 255 / .05);
+  --ws-shadow: 0 18px 50px rgb(0 0 0 / .55), 0 2px 6px rgb(0 0 0 / .4);
+  --ws-float: rgb(27 27 27 / .86);
+  --ws-wordmark: 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Songti SC', 'Noto Serif SC', Georgia, serif;
+  --ws-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei UI', 'Noto Sans SC', sans-serif;
+  --ws-inspector: 324px;
+}
+:root[data-theme="light"] {
+  --ws-bg: #efebe4; --ws-panel: #f8f6f2; --ws-raised: #ffffff; --ws-raised-2: #f2eee7;
+  --ws-line: #e2dcd2; --ws-line-2: #d3cbbd; --ws-canvas: #e4e0d8;
+  --ws-text: #211f1b; --ws-muted: #6f695f; --ws-faint: #9c958a;
+  --accent: #b8701a; --accent-hover: #9c5d12; --accent-soft: rgb(184 112 26 / .11); --on-accent: #ffffff;
+  --ws-ai: #6b52d6; --ws-ai-soft: rgb(107 82 214 / .08); --ws-own: #6b52d6;
+  --ws-well: rgb(60 45 20 / .035); --ws-hover: rgb(60 45 20 / .06);
+  --ws-shadow: 0 14px 40px rgb(60 45 20 / .18), 0 2px 6px rgb(60 45 20 / .12);
+  --ws-float: rgb(248 246 242 / .9);
+}
+:root .ws.gallery-shell {
+  --ink: var(--ws-text); --muted: var(--ws-muted); --faint: var(--ws-faint);
+  --border: var(--ws-line); --border-strong: var(--ws-line-2); --surface: var(--ws-panel); --surface-soft: var(--ws-raised);
+  --primary: var(--accent); --green: var(--accent); --seal: var(--accent);
+  font-family: var(--ws-sans); font-feature-settings: "tnum"; color: var(--ws-text); background: var(--ws-bg);
+}
+html, body { background: var(--ws-bg); }
+
+/* ---------- Shell ---------- */
+:root .ws.gallery-shell { display: grid; grid-template-columns: minmax(0,1fr) var(--ws-inspector); grid-template-rows: 48px repeat(4, auto) minmax(0,1fr) auto; }
+:root .ws.gallery-shell > * { grid-column: 1 / -1; }
+:root .ws.gallery-shell > .app-header { grid-row: 1; }
+:root .ws.gallery-shell > .workspace { display: contents; }
+:root .ws.gallery-shell .content-area { grid-column: 1; grid-row: 6; position: relative; background: var(--ws-canvas); }
+:root .ws.gallery-shell .settings-panel { grid-column: 2; grid-row: 6 / 8; min-block-size: 0; background: var(--ws-panel); border: 0; border-inline-start: 1px solid var(--ws-line); }
+:root .ws.gallery-shell > .library-footer { grid-column: 1; grid-row: 7; display: flex; flex-direction: column; overflow: hidden; background: var(--ws-panel); border: 0; border-block-start: 1px solid var(--ws-line); border-inline-end: 0; min-block-size: 0; }
+
+/* ---------- Header ---------- */
+:root .ws.gallery-shell .app-header { block-size: 48px; flex-basis: 48px; padding-inline: 18px 12px; background: var(--ws-panel); border-block-end: 1px solid var(--ws-line); gap: 16px; }
+:root .ws.gallery-shell .header-leading { display: flex; align-items: center; gap: 18px; min-inline-size: 0; }
+:root .ws.gallery-shell .brand { display: flex; align-items: center; gap: 9px; flex: none; }
+:root .ws.gallery-shell .brand h1 { display: flex; align-items: center; gap: 9px; }
+:root .ws.gallery-shell .brand h1::before { content: ''; inline-size: 9px; block-size: 9px; border-radius: 2px; background: var(--accent); }
+:root .ws.gallery-shell .brand h1 { font-family: var(--ws-wordmark); font-size: 21px; font-weight: 600; letter-spacing: .1px; color: var(--ws-text); }
+.view-switch { display: flex; padding: 2px; border: 1px solid var(--ws-line); border-radius: 7px; background: var(--ws-raised); -webkit-app-region: no-drag; flex: none; }
+.view-switch button { display: flex; align-items: center; gap: 6px; block-size: 24px; padding: 0 10px; border: 0; border-radius: 5px; background: transparent; color: var(--ws-muted); font-size: 12px; }
+.view-switch button:hover { color: var(--ws-text); }
+.view-switch button[aria-pressed=true] { background: var(--ws-raised-2); color: var(--ws-text); box-shadow: 0 1px 2px rgb(0 0 0 / .2); }
+:root[data-theme="light"] .view-switch button[aria-pressed=true] { background: #fff; }
+:root .ws.gallery-shell .app-header .file-heading { display: flex; align-items: baseline; gap: 9px; min-inline-size: 0; font-size: 12.5px; }
+:root .ws.gallery-shell .app-header .file-heading > span:first-child { color: var(--ws-text); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: inherit; font-size: 12.5px; }
+:root .ws.gallery-shell .app-header .source-size { font-family: inherit; color: var(--ws-faint); font-size: 12px; white-space: nowrap; }
+:root .ws.gallery-shell .header-actions { display: flex; align-items: center; gap: 2px; flex: none; }
+:root .ws.gallery-shell .header-actions .icon-button { inline-size: 32px; block-size: 32px; flex-basis: 32px; border-radius: 7px; color: var(--ws-muted); background: transparent; border: 0; }
+:root .ws.gallery-shell .header-actions .icon-button:hover:not(:disabled) { background: var(--ws-raised); color: var(--ws-text); }
+:root .ws.gallery-shell .header-actions .icon-button:disabled { opacity: .38; }
+:root .ws.gallery-shell .header-actions .agent-connected { color: var(--accent); }
+.header-divider { inline-size: 1px; block-size: 18px; margin-inline: 6px; background: var(--ws-line-2); }
+:root .ws.gallery-shell .import-button { block-size: 32px; padding: 0 11px; border: 0; border-radius: 7px; background: transparent; color: var(--ws-muted); font-size: 12.5px; gap: 7px; }
+:root .ws.gallery-shell .import-button:hover:not(:disabled) { background: var(--ws-raised); color: var(--ws-text); }
+:root .ws.gallery-shell .language-picker { position: relative; display: flex; align-items: center; }
+:root .ws.gallery-shell .language-picker > svg { position: absolute; inset-inline-start: 8px; color: var(--ws-muted); pointer-events: none; }
+:root .ws.gallery-shell .language-picker select { min-inline-size: 0; max-inline-size: none; inline-size: auto; block-size: 32px; padding: 0 8px 0 30px; border: 0; border-radius: 7px; background: transparent; color: var(--ws-muted); font-size: 12px; appearance: none; -webkit-appearance: none; cursor: pointer; }
+:root .ws.gallery-shell .language-picker select:hover { background: var(--ws-raised); color: var(--ws-text); }
+:root .ws.gallery-shell .export-primary { margin-inline-start: 8px; block-size: 32px; padding: 0 14px; border-radius: 7px; font-size: 12.5px; gap: 7px; }
+:root .ws.gallery-shell .button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+:root .ws.gallery-shell .button.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+:root .ws.gallery-shell .button.primary:disabled { opacity: .45; }
+:root .ws.gallery-shell .button.secondary { background: var(--ws-raised); border-color: var(--ws-line-2); color: var(--ws-text); }
+
+/* ---------- Stage ---------- */
+:root .ws.gallery-shell .viewer { position: relative; }
+:root .ws.gallery-shell .photo-viewport { flex: 1; background: transparent; }
+:root .ws.gallery-shell .photo-viewport .zoom-photo { box-shadow: var(--ws-shadow); }
+:root .ws.gallery-shell .zoom-toolbar { background: var(--ws-float); border: 1px solid var(--ws-line); box-shadow: 0 6px 20px rgb(0 0 0 / .25); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); min-block-size: 0; }
+:root .ws.gallery-shell .zoom-toolbar .icon-button { inline-size: 28px; block-size: 28px; border-radius: 6px; color: var(--ws-muted); background: transparent; border: 0; }
+:root .ws.gallery-shell .zoom-toolbar .icon-button:hover, :root .ws.gallery-shell .zoom-toolbar .text-button:hover { background: var(--ws-hover); color: var(--ws-text); }
+:root .ws.gallery-shell .zoom-toolbar input[type=number] { font-family: inherit; background: transparent; color: var(--ws-text); }
+:root .ws.gallery-shell .zoom-toolbar .text-button[aria-pressed=true] { color: var(--accent); background: var(--accent-soft); }
+:root .ws.gallery-shell .viewer-bottomline { position: absolute; z-index: 2; inset-block-start: 14px; inset-inline-start: 16px; min-block-size: 0; padding: 0; background: transparent; border: 0; gap: 12px; color: var(--ws-faint); font-size: 11.5px; pointer-events: none; justify-content: flex-start; }
+:root .ws.gallery-shell .viewer-bottomline strong { font-family: inherit; color: var(--ws-muted); font-weight: 500; }
+:root .ws.gallery-shell .viewer-bottomline .preview-error { pointer-events: auto; color: var(--red, #ff8a73); }
+:root .ws.gallery-shell .preview-pending { background: var(--ws-float); color: var(--ws-muted); border: 1px solid var(--ws-line); }
+:root .ws.gallery-shell .watermark-detail { background: var(--ws-float); border-color: var(--ws-line); box-shadow: 0 8px 24px rgb(0 0 0 / .3); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: 10px; }
+:root .ws.gallery-shell .empty-state h2 { font-family: var(--ws-wordmark); font-weight: 500; }
+:root .ws.gallery-shell .resume-banner { background: var(--ws-panel); border-color: var(--ws-line); }
+
+/* ---------- Filmstrip ---------- */
+:root .ws.gallery-shell .filmstrip-section { display: flex; flex-direction: column; align-items: stretch; gap: 6px; flex: none; min-block-size: 0; min-height: 0; padding: 8px 0 10px; background: transparent; border: 0; }
+.library-bar { display: flex; align-items: center; gap: 14px; padding-inline: 16px 10px; min-block-size: 32px; margin-block: -4px -2px; }
+:root .ws.gallery-shell .library-summary { flex-direction: row; align-items: baseline; gap: 12px; padding: 0; max-inline-size: none; min-inline-size: 0; }
+:root .ws.gallery-shell .library-summary strong { display: flex; gap: 10px; font-family: inherit; font-size: 11.5px; font-weight: 500; color: var(--ws-text); }
+:root .ws.gallery-shell .library-summary .selection-count { color: var(--accent); font-weight: 500; }
+:root .ws.gallery-shell .library-summary > #photo-selection-hint { display: block; color: var(--ws-faint); font-size: 11px; max-inline-size: 280px; }
+.library-tools { display: flex; align-items: center; gap: 2px; margin-inline-start: auto; }
+:root .ws.gallery-shell .library-tools .text-button { display: inline-flex; align-items: center; gap: 5px; block-size: 32px; padding: 0 8px; border-radius: 5px; color: var(--ws-muted); font-size: 11.5px; background: transparent; border: 0; min-block-size: 0; }
+:root .ws.gallery-shell .library-tools .text-button:hover:not(:disabled) { background: var(--ws-hover); color: var(--ws-text); }
+:root .ws.gallery-shell .library-tools .text-button:disabled { opacity: .4; }
+:root .ws.gallery-shell .filmstrip { display: flex; flex-direction: row; align-items: center; gap: 10px; padding: 4px 16px 2px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+:root .ws.gallery-shell .thumbnail { flex: 0 0 auto; inline-size: 88px; block-size: 62px; padding: 3px; border: 0; border-radius: 4px; background: var(--ws-well); box-shadow: none; outline: 2px solid transparent; outline-offset: 1px; opacity: .78; overflow: visible; }
+:root .ws.gallery-shell .thumbnail:hover { opacity: 1; background: var(--ws-hover); }
+:root .ws.gallery-shell .thumbnail::before { display: none; }
+:root .ws.gallery-shell .thumbnail img { inline-size: 100%; block-size: 100%; object-fit: contain; border-radius: 1px; }
+:root .ws.gallery-shell .thumbnail.selected { opacity: 1; outline-color: color-mix(in srgb, var(--accent) 55%, transparent); background: var(--accent-soft); box-shadow: none; }
+:root .ws.gallery-shell .thumbnail.active { outline-color: var(--accent); }
+:root .ws.gallery-shell .own-badge { position: absolute; box-shadow: none; inset-block-start: -4px; inset-inline-start: auto; inset-inline-end: -4px; inline-size: 14px; block-size: 14px; border-radius: 50%; background: var(--ws-own); color: var(--ws-panel); border: 2px solid var(--ws-panel); display: grid; place-items: center; }
+:root .ws.gallery-shell .own-badge svg { inline-size: 7px; block-size: 7px; }
+:root .ws.gallery-shell .add-tile { flex: 0 0 auto; inline-size: 62px; block-size: 62px; border: 1px dashed var(--ws-line-2); border-radius: 6px; background: transparent; color: var(--ws-faint); }
+:root .ws.gallery-shell .add-tile:hover:not(:disabled) { color: var(--ws-text); border-color: var(--ws-muted); }
+:root .ws.gallery-shell .library-actions { margin: 0; padding: 0 16px; justify-content: flex-start; gap: 10px; }
+:root .ws.gallery-shell .library-actions:empty { display: none; }
+:root .ws.gallery-shell > .library-footer { overflow: visible; position: relative; }
+:root .ws.gallery-shell .import-feedback { padding-inline: 16px; color: var(--ws-muted); font-size: 11.5px; }
+:root .ws.gallery-shell .catalog-undo, :root .ws.gallery-shell .export-done { position: absolute; z-index: 6; inset-block-end: calc(100% + 64px); max-inline-size: min(520px, calc(100% - 32px)); padding: 7px 8px 7px 12px; border: 1px solid var(--ws-line-2); border-radius: 9px; background: var(--ws-float); color: var(--ws-text); font-size: 12px; box-shadow: 0 10px 30px rgb(0 0 0 / .3); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+:root .ws.gallery-shell .catalog-undo { inset-inline-start: 16px; inset-inline-end: auto; }
+:root .ws.gallery-shell .export-done { inset-inline-start: auto; inset-inline-end: 16px; }
+:root .ws.gallery-shell .catalog-undo .text-button, :root .ws.gallery-shell .export-done .text-button { color: var(--accent); }
+:root .ws.gallery-shell .import-feedback:empty { display: none; }
+:root .ws.gallery-shell .batch-track > div { background: var(--accent); }
+
+/* ---------- Inspector ---------- */
+:root .ws.gallery-shell .settings-panel { display: flex; flex-direction: column; }
+.scope-row { display: flex; align-items: center; gap: 10px; padding: 12px 16px 10px; flex: none; }
+.scope-label { font-size: 12px; color: var(--ws-muted); white-space: nowrap; }
+:root .ws.gallery-shell .settings-scope { flex: 1; margin: 0; padding: 2px; gap: 2px; border: 1px solid var(--ws-line); border-radius: 7px; background: var(--ws-raised); }
+:root .ws.gallery-shell .settings-scope button { min-block-size: 24px; border: 0; border-radius: 5px; color: var(--ws-muted); font-size: 12px; background: transparent; }
+:root .ws.gallery-shell .settings-scope button.active { background: var(--ws-raised-2); color: var(--ws-text); box-shadow: 0 1px 2px rgb(0 0 0 / .2); }
+:root[data-theme="light"] .ws.gallery-shell .settings-scope button.active { background: #fff; }
+:root .ws.gallery-shell .scope-note { margin: -2px 16px 8px; color: var(--ws-faint); }
+:root .ws.gallery-shell .restore-shared { margin: -4px 16px 8px; align-self: flex-start; color: var(--accent); font-size: 12px; }
+:root .ws.gallery-shell .inspector-tabs { flex: none; gap: 22px; margin: 0; padding: 0 16px; background: transparent; border-radius: 0; border-block-end: 1px solid var(--ws-line); }
+:root .ws.gallery-shell .inspector-tabs button { flex: 0 0 auto; min-block-size: 40px; padding: 0; border: 0; border-block-end: 2px solid transparent; border-radius: 0; margin-block-end: -1px; background: transparent; font-size: 13px; color: var(--ws-muted); }
+:root .ws.gallery-shell .inspector-tabs button[aria-selected=true] { color: var(--ws-text); border-color: var(--accent); font-weight: 500; }
+:root .ws.gallery-shell .inspector-panel { padding: 16px 16px 22px; }
+:root .ws.gallery-shell .inspector-panel::-webkit-scrollbar-thumb { background: var(--ws-line-2); }
+
+/* section headings: small caps label above each group */
+:root .ws.gallery-shell .quick-templates-heading { display: flex; align-items: center; justify-content: space-between; margin-block-end: 10px; }
+:root .ws.gallery-shell .quick-templates-heading h2,
+:root .ws.gallery-shell .ratio-title .field-label,
+:root .ws.gallery-shell .color-label { font-family: inherit; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ws-muted); }
+:root .ws.gallery-shell .quick-templates-heading .text-button { color: var(--accent); font-size: 12px; }
+:root .ws.gallery-shell .field-label { font-family: inherit; font-size: 12.5px; font-weight: 400; color: var(--ws-text); }
+:root .ws.gallery-shell .field-help { color: var(--ws-faint); font-size: 11.5px; }
+.inspector-group-start { block-size: 1px; margin: 18px -16px 14px; background: var(--ws-line); }
+
+:root .ws.gallery-shell .quick-template-grid { gap: 8px; }
+:root .ws.gallery-shell .quick-template-grid > button { padding: 0; gap: 6px; border: 0; background: transparent; color: var(--ws-muted); font-size: 11.5px; text-align: start; }
+:root .ws.gallery-shell .quick-template-grid > button:hover:not(:disabled) { color: var(--ws-text); background: transparent; }
+:root .ws.gallery-shell .quick-template-grid > button[aria-pressed=true] { color: var(--ws-text); background: transparent; }
+:root .ws.gallery-shell .template-sample { block-size: 66px; border-radius: 6px; box-shadow: 0 0 0 1px var(--ws-line); }
+:root .ws.gallery-shell .quick-template-grid > button:hover .template-sample { box-shadow: 0 0 0 1px var(--ws-line-2); }
+:root .ws.gallery-shell .quick-template-grid > button[aria-pressed=true] .template-sample { box-shadow: 0 0 0 2px var(--accent); }
+:root .ws.gallery-shell .trial-actions { margin-block-start: 10px; }
+
+.ai-card { display: flex; align-items: center; gap: 10px; inline-size: 100%; margin-block-start: 12px; padding: 9px 10px; border: 1px solid color-mix(in srgb, var(--ws-ai) 35%, transparent); border-radius: 8px; background: var(--ws-ai-soft); color: var(--ws-text); text-align: start; cursor: pointer; }
+.ai-card:hover:not(:disabled) { border-color: color-mix(in srgb, var(--ws-ai) 60%, transparent); }
+.ai-card:disabled { opacity: .5; cursor: default; }
+.ai-card > svg { color: var(--ws-muted); flex: none; }
+.ai-card-icon { display: grid; place-items: center; inline-size: 28px; block-size: 28px; border-radius: 7px; color: var(--ws-ai); background: color-mix(in srgb, var(--ws-ai) 16%, transparent); flex: none; }
+.ai-card-text { display: flex; flex-direction: column; gap: 1px; flex: 1; min-inline-size: 0; line-height: 1.3; }
+.ai-card-text strong { font-size: 12.5px; font-weight: 500; }
+.ai-card-text small { font-size: 11px; color: var(--ws-muted); }
+
+:root .ws.gallery-shell .ratio-grid { grid-template-columns: repeat(4, minmax(0,1fr)); gap: 5px; margin-block-end: 14px; }
+:root .ws.gallery-shell .ratio-grid button { min-block-size: 28px; border: 1px solid var(--ws-line); border-radius: 6px; background: var(--ws-raised); color: var(--ws-muted); font-family: inherit; font-size: 12px; }
+:root .ws.gallery-shell .ratio-grid button:hover:not(.active) { color: var(--ws-text); background: var(--ws-raised-2); }
+:root .ws.gallery-shell .ratio-grid button.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+:root .ws.gallery-shell .number-with-unit input, :root .ws.gallery-shell .hex-input { font-family: inherit; }
+:root .ws.gallery-shell input:not([type=range]):not([type=color]):not([type=radio]):not([type=checkbox]),
+:root .ws.gallery-shell select, :root .ws.gallery-shell textarea { background: var(--ws-raised); border-color: var(--ws-line); color: var(--ws-text); }
+:root .ws.gallery-shell .app-header .language-picker select { background: transparent; }
+:root .ws.gallery-shell .zoom-toolbar input[type=number]:not([type=range]):not([type=color]):not([type=radio]):not([type=checkbox]) { background: transparent; border-color: transparent; }
+:root .ws.gallery-shell .zoom-toolbar input[type=number]:not([type=range]):not([type=color]):not([type=radio]):not([type=checkbox]):hover,
+:root .ws.gallery-shell .zoom-toolbar input[type=number]:not([type=range]):not([type=color]):not([type=radio]):not([type=checkbox]):focus { border-color: var(--ws-line-2); }
+:root .ws.gallery-shell input[type=range] { accent-color: var(--accent); }
+:root .ws.gallery-shell button:focus-visible, :root .ws.gallery-shell input:focus-visible, :root .ws.gallery-shell select:focus-visible { outline-color: var(--accent); }
+:root .ws.gallery-shell .palette-swatch, :root .ws.gallery-shell .photo-swatch { inline-size: 24px; block-size: 24px; border-radius: 50%; border: 1px solid rgb(128 128 128 / .35); padding: 0; cursor: pointer; }
+:root .ws.gallery-shell .palette-swatch.active, :root .ws.gallery-shell .photo-swatch.active { outline: 2px solid var(--accent); outline-offset: 2px; }
+.photo-colors-label { display: block; margin: 12px 0 7px; font-size: 11px; color: var(--ws-faint); }
+:root .ws.gallery-shell .color-palette { display: flex; flex-wrap: wrap; gap: 8px; }
+:root .ws.gallery-shell .color-picker, :root .ws.gallery-shell .icon-button.bordered { background: var(--ws-raised); border-color: var(--ws-line); }
+:root .ws.gallery-shell .text-button { color: var(--ws-text); }
+:root .ws.gallery-shell .text-button:hover:not(:disabled) { color: var(--accent); }
+:root .ws.gallery-shell details > summary { color: var(--ws-text); }
+:root .ws.gallery-shell .segmented { background: var(--ws-raised); border-color: var(--ws-line); }
+:root .ws.gallery-shell .segmented button.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+:root .ws.gallery-shell .font-picker { background: var(--ws-raised); border-color: var(--ws-line); }
+:root .ws.gallery-shell .font-picker [role=option] { color: var(--ws-text); }
+:root .ws.gallery-shell .font-picker [role=option]:hover { background: var(--ws-hover); }
+:root .ws.gallery-shell .font-picker [role=option].chosen { background: var(--accent-soft); color: var(--accent); }
+
+:root .ws.gallery-shell .inspector-bottom { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 16px; border-block-start: 1px solid var(--ws-line); flex: none; }
+.inspector-bottom-status { font-size: 11.5px; color: var(--ws-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-inline-size: 0; }
+:root .ws.gallery-shell .inspector-bottom .export-options { display: inline-flex; align-items: center; gap: 4px; flex: none; min-block-size: 28px; padding: 0 9px; border: 1px solid var(--ws-line); border-radius: 6px; background: transparent; color: var(--ws-muted); font-family: inherit; font-size: 11.5px; }
+:root .ws.gallery-shell .inspector-bottom .export-options:hover:not(:disabled) { color: var(--ws-text); border-color: var(--ws-line-2); }
+
+/* ---------- Narrow windows ---------- */
+@media (max-width: 1100px) {
+  :root .ws.gallery-shell { --ws-inspector: 296px; }
+  :root .ws.gallery-shell .library-summary > #photo-selection-hint { display: none; }
+  :root .ws.gallery-shell .app-header .source-size { display: none; }
+}
+@media (max-width: 960px) {
+  :root .ws.gallery-shell .app-header .file-heading { display: none; }
+  :root .ws.gallery-shell .library-tools .text-button span, :root .ws.gallery-shell .import-button { font-size: 0; gap: 0; }
+  :root .ws.gallery-shell .import-button svg { margin: 0; }
+}
+@media (max-height: 700px) {
+  :root .ws.gallery-shell .thumbnail { block-size: 52px; inline-size: 74px; }
+  :root .ws.gallery-shell .add-tile { block-size: 52px; inline-size: 52px; }
+  :root .ws.gallery-shell .filmstrip-section { padding-block: 6px 8px; gap: 4px; }
+}
