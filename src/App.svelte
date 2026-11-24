@@ -25,7 +25,7 @@
   import {brand} from './lib/brand';
   import {theme} from './lib/theme';
   import {startupDeadline} from './lib/startup';
-  import type {OffsetLimits,AiConfig} from './lib/types';
+  import type {OffsetLimits,AiConfig,HeldArtResult} from './lib/types';
   import {
     defaultSettings,
     type AppSnapshot, type BatchSnapshot, type ImportResult, type Photo,
@@ -308,6 +308,7 @@
   let sessionApiKey = '',sessionApiOrigin='';
   let sessionImageApiKey='',sessionImageApiOrigin='';
   let previousArt: SettingsEdit | null = null;
+  let heldArtResult:HeldArtResult|null=null;
   const motifs: {kind:FrameDecoration['kind'];name:string}[]=[{kind:'none',name:'纯色'},{kind:'paper',name:'纸感'},{kind:'linen',name:'亚麻'},{kind:'dots',name:'点阵'},{kind:'lines',name:'细条纹'},{kind:'waves',name:'柔波纹'},{kind:'corners',name:'角标'}];
   function applyArt(suggestion:FrameSuggestion) {
     const next={...settings,frameColor:suggestion.frameColor,borderPercent:suggestion.borderPercent,decoration:clone(suggestion.decoration),artwork:clone(suggestion.artwork)};
@@ -1637,7 +1638,7 @@
   <footer><span>{$t("每张照片独立处理，失败不影响其他照片")}</span>{#if batch?.outputDirectory}<button class="button secondary compact" on:click={() => batch && revealPath(batch.outputDirectory)}><FolderOpen size={14} />{$t("打开文件夹")}</button>{/if}</footer>
 </dialog>
 
-{#if modelOpen && selectedPhoto}<ModelPanel bind:initialMode={modelMode} bind:imageTarget={modelTarget} initialConfig={stagedModelConfig} onconfigure={configureModels} photo={selectedPhoto} count={frameAffectedCount} baseSettings={settings} onsavetemplate={saveSuggestedFrame} bind:apiKey={sessionApiKey} bind:apiOrigin={sessionApiOrigin} bind:imageApiKey={sessionImageApiKey} bind:imageApiOrigin={sessionImageApiOrigin} onapply={applyArt} onclose={()=>{modelOpen=false;stagedModelConfig=null;}} />{/if}
+{#if modelOpen && selectedPhoto}<ModelPanel heldResult={heldArtResult} onholdresult={held=>heldArtResult=held} bind:initialMode={modelMode} bind:imageTarget={modelTarget} initialConfig={stagedModelConfig} onconfigure={configureModels} photo={selectedPhoto} count={frameAffectedCount} baseSettings={settings} onsavetemplate={saveSuggestedFrame} bind:apiKey={sessionApiKey} bind:apiOrigin={sessionApiOrigin} bind:imageApiKey={sessionImageApiKey} bind:imageApiOrigin={sessionImageApiOrigin} onapply={applyArt} onclose={()=>{modelOpen=false;stagedModelConfig=null;}} />{/if}
 {#if modelsConfigOpen}<ModelsConfig initialConfig={stagedModelConfig} target={modelConfigTarget} bind:apiKey={sessionApiKey} bind:apiOrigin={sessionApiOrigin} bind:imageApiKey={sessionImageApiKey} bind:imageApiOrigin={sessionImageApiOrigin} onsaved={value=>stagedModelConfig=clone(value)} onclose={closeModelConfig}/>{/if}
 
 {#if templatesOpen}<FrameTemplates photo={selectedPhoto} currentPreview={preview?.dataUrl||''} currentSettings={settings} templates={frameTemplates} draft={templateDraft} initialName={templateName} initialCategory={templateCategory} onsave={saveFrameTemplate} ondelete={deleteFrameTemplate} onapply={applyFrameTemplate} onclose={()=>templatesOpen=false}/>{/if}

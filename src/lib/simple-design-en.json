@@ -53,5 +53,6 @@
   "预览未完成": "Preview unavailable",
   "重试本机预览（不再次生图）": "Retry local preview (no new image request)",
   "本机预览已取消，生成结果仍保留，可直接重试预览。": "Local preview was canceled. Your generated result is retained; retry the preview without generating again.",
-  "放弃本次结果，开启新一轮": "Discard result and start a new round"
+  "放弃本次结果，开启新一轮": "Discard result and start a new round",
+  "已恢复上次收到的模型结果，本机预览尚未完成。可直接重试预览，不会再次生图。": "Restored the model result you received earlier. Its local preview is not finished yet; retry the preview without generating again."
 }

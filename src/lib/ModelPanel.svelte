@@ -7,7 +7,7 @@
  import {isOpenAiImageApi} from './image-api-config';
  import { X, LoaderCircle, WandSparkles, RotateCcw } from '@lucide/svelte';
 
- import type { AiConfig, AiPhoto, AiState, FrameSuggestion, Photo, RenderSettings, PreviewResult,GeneratedArt,ChatGptDiagnostic,ChatGptState,ChatGptModel,PiCatalog } from './types';
+ import type { AiConfig, AiPhoto, AiState, FrameSuggestion, HeldArtResult, Photo, RenderSettings, PreviewResult,GeneratedArt,ChatGptDiagnostic,ChatGptState,ChatGptModel,PiCatalog } from './types';
  export let photo: Photo;
  export let initialConfig:AiConfig|null=null;
  export let onconfigure:(config:AiConfig,target:'analysis'|'image')=>void;
@@ -26,6 +26,9 @@
  export let onapply: (suggestion: FrameSuggestion) => void;
  export let onsavetemplate:(suggestion:FrameSuggestion)=>void;
  export let onclose: () => void;
+ /** A result received earlier whose local preview is still pending. */
+ export let heldResult:HeldArtResult|null=null;
+ export let onholdresult:(held:HeldArtResult|null)=>void=()=>{};
  let dialog: HTMLDialogElement;
  let config: AiConfig = {frameDesign:{...defaultFrameDesign,colors:[...defaultFrameDesign.colors]},image:{...defaultImageConfig},provider:'codex',baseUrl:'',model:'',codexPath:null,styleDirection:'',designDensity:'auto'};
  const origin=(url:string)=>{try{return new URL(url).origin;}catch{return '';}};
@@ -62,7 +65,20 @@
  let generationFeedback:HTMLDivElement|undefined;
  let creativeBrief='',hasInitialized=false;
  $: generationKind=mode==='refine'?'refine':mode==='design'?'design':imageTarget==='frame'?'image':'sticker';
- onMount(() => { dialog.showModal(); void initialize(); });
+ function restoreHeldResult(){
+  if(!heldResult||heldResult.photoId!==photo.id||!heldResult.suggestions.length)return '';
+  // Restore the received result before preparing, so the paid round stays
+  // locked against a new request and only a local preview retry is offered.
+  mode=heldResult.mode;initialMode=mode;imageTarget=heldResult.imageTarget;
+  suggestions=heldResult.suggestions;previews={};resultReceived=true;generationPhase='preview';
+  onholdresult(null);
+  return $t('已恢复上次收到的模型结果，本机预览尚未完成。可直接重试预览，不会再次生图。');
+ }
+ onMount(() => {
+  const restored=restoreHeldResult();
+  dialog.showModal();
+  void initialize().then(()=>{if(restored&&alive&&!problem&&!busy)problem=restored;});
+ });
  async function initialize(draft:AiConfig|null=null) {
   const run=++initialization;
   loading=true;problem='';connectionProblem='';connectionChecking=false;chatgptReady=false;piReady=false;
@@ -125,7 +141,13 @@
    if(problem)void tick().then(()=>{if(alive&&!busy)generationFeedback?.scrollIntoView({block:'nearest'});});
   }
  }
- onDestroy(()=>{alive=false;stopElapsed();if(busy&&!resultReceived)void invoke('cancel_art_frames');});
+ onDestroy(()=>{
+  alive=false;stopElapsed();if(busy&&!resultReceived)void invoke('cancel_art_frames');
+  // Closing the dialog must not discard a received result that has not been
+  // previewed yet. Keep it so reopening offers the free local retry again.
+  if(resultReceived&&suggestions.length&&suggestions.some((_,i)=>!previews[i]))
+   onholdresult({photoId:photo.id,mode,imageTarget,suggestions:JSON.parse(JSON.stringify(suggestions))});
+ });
  async function cancelGeneration(){
   if(cancelRequested)return;
   cancelledLocalPreview=resultReceived&&generationPhase==='preview';
