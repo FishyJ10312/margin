@@ -612,6 +612,7 @@ impl Backend {
             border_percent: settings.border_percent,
             frame_color: settings.frame_color.clone(),
             decoration: settings.decoration.clone(),
+            background: settings.background.clone(),
             artwork: settings.artwork.clone(),
             ..RenderSettings::default()
         };

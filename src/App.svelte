@@ -33,7 +33,7 @@
     defaultSettings,
     type AppSnapshot, type BatchSnapshot, type ImportResult, type Photo,
     type Preset, type PreviewResult, type RenderSettings, type SettingsCommit, type WatermarkKind,
-    type WatermarkPosition, type WatermarkRegion, type FontOption, type FrameSuggestion, type FrameDecoration, type FrameTemplate, type BuiltinFrame, defaultCameraTemplate, type CameraInfo } from './lib/types';
+    type WatermarkPosition, type WatermarkRegion, type FrameBackground, defaultBackground, type FontOption, type FrameSuggestion, type FrameDecoration, type FrameTemplate, type BuiltinFrame, defaultCameraTemplate, type CameraInfo } from './lib/types';
 
   const desktop = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
   const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
@@ -55,7 +55,7 @@
   async function saveFrameTemplate(name:string,style:RenderSettings){const saved=await invoke<FrameTemplate>('save_frame_template',{name,settings:style});frameTemplates=[...frameTemplates,saved];}
   async function deleteFrameTemplate(id:string){await invoke('delete_frame_template',{id});frameTemplates=frameTemplates.filter(t=>t.id!==id);}
   function applyFrameTemplate(style:RenderSettings, keepLayout=false, minimumPadding=0){
-    const next={...settings,ratio:clone(style.ratio),borderPercent:style.borderPercent,frameColor:style.frameColor,decoration:clone(style.decoration),artwork:style.artwork?clone(style.artwork):null};
+    const next={...settings,ratio:clone(style.ratio),borderPercent:style.borderPercent,frameColor:style.frameColor,decoration:clone(style.decoration),background:clone(style.background??defaultBackground),artwork:style.artwork?clone(style.artwork):null};
     performFrameEdit(next,frameStyleEdit(style,keepLayout),{keepLayout,minimumPadding});
     templatesOpen=false;modelOpen=false;
   }
@@ -296,6 +296,7 @@
     frameColor: quickStyles[trialIndex].frameColor,
     borderPercent: trialIndex === 0 ? settings.borderPercent : Math.max(settings.borderPercent, quickStyles[trialIndex].borderPercent),
     decoration: quickStyles[trialIndex].decoration,
+    background: clone(quickStyles[trialIndex].background ?? defaultBackground),
     artwork: quickStyles[trialIndex].artwork,
   } : null;
   $: effectiveSettings = actualPhotoSettings(settings,sharedSettings,selectedPhoto?.settings,editSelected);
@@ -643,6 +644,8 @@
     if (!/^#[0-9a-f]{6}$/i.test(value.frameColor)) return $t("请输入六位 HEX 边框颜色");
     if (!Number.isFinite(value.borderPercent) || value.borderPercent < 0 || value.borderPercent > 30) return $t("边框比例应在 0% 到 30% 之间");
     if (value.ratio && (!(value.ratio.width > 0) || !(value.ratio.height > 0))) return $t("自定义比例的宽和高必须大于 0");
+    const backdrop = value.background ?? defaultBackground;
+    if (!['color','blur'].includes(backdrop.kind) || !(backdrop.blur >= 0 && backdrop.blur <= 1) || !(backdrop.dim >= 0 && backdrop.dim <= 0.8)) return $t("请检查边框底色设置");
     if (value.watermark.kind !== 'none' && (!Number.isFinite(value.watermark.offsetX) || !Number.isFinite(value.watermark.offsetY))) return $t("请输入有效的水印偏移");
     if (value.watermark.kind === 'text' && !value.watermark.text.trim()) return $t("请输入水印文字");
     if (value.watermark.kind === 'camera' && !value.watermark.cameraTemplate?.trim()) return $t("请填写参数水印的内容");
@@ -999,6 +1002,13 @@
       frameHexError = '';
       if (editSelected && selectedIds.length > 1) stageSettings(settings, {frameColor:settings.frameColor});
     } else frameHexError = $t("颜色格式如 #FFFFFF");
+  }
+
+  function setBackground(patch:Partial<FrameBackground>) {
+    const next={...defaultBackground,...(settings.background??{}),...patch};
+    cancelFrameTrial();
+    settings.background=next;
+    if(editSelected&&selectedIds.length>1)stageSettings(settings,{background:clone(next)});
   }
 
   function setBorderPercent(value:number) {
@@ -1522,6 +1532,17 @@
         <p class="field-help">{$t("按照片短边计算最小留白；指定比例时，部分方向会增加留白")}</p>
         <div class="inspector-group-start" aria-hidden="true"></div>
         <label class="field-label color-label" for="frame-hex">{$t("边框颜色")}</label>
+        <div class="segmented background-kind" role="group" aria-label={$t('边框底色')}>
+          <button type="button" class:active={(settings.background?.kind??'color')==='color'} aria-pressed={(settings.background?.kind??'color')==='color'} on:click={()=>setBackground({kind:'color'})}>{$t('纯色')}</button>
+          <button type="button" class:active={settings.background?.kind==='blur'} aria-pressed={settings.background?.kind==='blur'} on:click={()=>setBackground({kind:'blur'})}>{$t('照片模糊')}</button>
+        </div>
+        {#if settings.background?.kind==='blur'}
+          <div class="field-title"><label class="field-label" for="background-blur">{$t('模糊程度')}</label><output>{Math.round(settings.background.blur*100)}%</output></div>
+          <input id="background-blur" type="range" min="0" max="1" step="0.05" value={settings.background.blur} on:input={e=>setBackground({blur:e.currentTarget.valueAsNumber})}/>
+          <div class="field-title"><label class="field-label" for="background-dim">{$t('叠加边框颜色')}</label><output>{Math.round(settings.background.dim*100)}%</output></div>
+          <input id="background-dim" type="range" min="0" max="0.8" step="0.05" value={settings.background.dim} on:input={e=>setBackground({dim:e.currentTarget.valueAsNumber})}/>
+          <p class="field-help">{$t('用照片自身的模糊版本铺满留白，照片仍完整保留；下面的颜色会按比例叠加在模糊底上。')}</p>
+        {/if}
         <div class="color-palette" role="group" aria-label={$t('边框色盘')}>{#each palette.slice(0,8) as [color,name]}<button style:background={color} class:active={settings.frameColor.toUpperCase()===color} class="palette-swatch" aria-label={`${$t(name)} ${color}`} aria-pressed={settings.frameColor.toUpperCase()===color} title={$t(name)} on:click={()=>setFrameColor(color)}></button>{/each}</div>
         {#if photoColors.length}
           <span class="photo-colors-label">{$t('来自这张照片')}</span>

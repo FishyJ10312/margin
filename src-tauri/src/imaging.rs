@@ -128,6 +128,7 @@ pub fn validate_settings(settings: &RenderSettings) -> Result<(), String> {
     }
     parse_color(&settings.frame_color)?;
     crate::decoration::validate(&settings.decoration)?;
+    crate::backdrop::validate(&settings.background)?;
     if !matches!(settings.export.format.as_str(), "jpg" | "png") {
         return Err("请选择 JPG 或 PNG 导出格式".into());
     }
@@ -943,6 +944,9 @@ fn compose(
         pixel.copy_from_slice(&c);
     }
     let mut canvas = RgbImage::from_raw(layout.width, layout.height, data).ok_or("画布尺寸无效")?;
+    if let Some(backdrop) = crate::backdrop::prepare(source, &settings.background, c, layout.width, layout.height) {
+        crate::backdrop::paint(&mut canvas, &backdrop, 0, 0, layout.width, layout.height);
+    }
     if source.dimensions() == (layout.photo_width, layout.photo_height) {
         blend_rgb(&mut canvas, source, layout.x, layout.y);
     } else {
@@ -1870,6 +1874,9 @@ pub fn watermark_detail(
     let h = (scale(y1) - oy).max(1);
     let c = parse_color(&settings.frame_color)?;
     let mut canvas = RgbImage::from_pixel(w, h, image::Rgb(c));
+    if let Some(backdrop) = crate::backdrop::prepare(&source.pixels, &settings.background, c, l.width, l.height) {
+        crate::backdrop::paint(&mut canvas, &backdrop, ox, oy, l.width, l.height);
+    }
     for y in 0..h {
         for x in 0..w {
             let gx = x + ox;
@@ -1909,7 +1916,7 @@ pub fn watermark_detail(
             }
             let target = canvas.get_pixel_mut(x, y);
             for i in 0..3 {
-                target[i] = (rgba[i] + f64::from(c[i]) * (1. - rgba[3])).round() as u8;
+                target[i] = (rgba[i] + f64::from(target[i]) * (1. - rgba[3])).round() as u8;
             }
         }
     }

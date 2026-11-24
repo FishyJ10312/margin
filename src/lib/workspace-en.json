@@ -37,5 +37,16 @@
   "总览按真实比例和留白排版，只显示底色；模板、装饰和水印请在单张视图查看。双击打开单张。": "The overview uses each photo's real ratio and padding with its frame colour only. Open the single view for templates, decoration and watermarks. Double-click to open a photo.",
   "清空": "Clear",
   "清空列表（原图保留）": "Clear the list (originals stay on disk)",
-  "共享设置 · {0} 张": "Shared · {0} photos"
+  "共享设置 · {0} 张": "Shared · {0} photos",
+  "边框底色": "Border fill",
+  "纯色": "Solid",
+  "照片模糊": "Blurred photo",
+  "模糊程度": "Blur",
+  "叠加边框颜色": "Frame colour overlay",
+  "用照片自身的模糊版本铺满留白，照片仍完整保留；下面的颜色会按比例叠加在模糊底上。": "Fills the border with a blurred copy of the photo while the photo itself stays whole. The colour below is mixed over the blur by this amount.",
+  "请检查边框底色设置": "Check the border fill settings",
+  "边框底色只能是纯色或照片模糊": "Border fill must be solid or blurred photo",
+  "模糊程度应在 0–100% 之间": "Blur must be between 0 and 100%",
+  "底色叠加应在 0–80% 之间": "Colour overlay must be between 0 and 80%",
+  "照片模糊底": "Blurred photo fill"
 }

@@ -8,6 +8,7 @@ mod app_models;
 pub mod art_ai;
 pub mod art_direction;
 pub mod artwork;
+pub mod backdrop;
 pub mod camera_info;
 pub mod chatgpt_auth;
 #[cfg(unix)]

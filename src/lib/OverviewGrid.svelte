@@ -32,6 +32,7 @@
       <span class="overview-stage">
         <span class="overview-check" aria-hidden="true">{#if selected.has(photo.id)}<Check size={11} strokeWidth={3}/>{/if}</span>
         <span class="overview-canvas" style:width="{view.w}px" style:height="{view.h}px" style:background={view.s.frameColor}>
+          {#if view.s.background?.kind==='blur'&&photo.thumbnail}<span class="overview-backdrop" aria-hidden="true" style:background-image="url({photo.thumbnail})" style:filter="blur({(0.6+view.s.background.blur*13.4)*Math.max(view.w,view.h)/192}px)"></span><span class="overview-backdrop tint" aria-hidden="true" style:background={view.s.frameColor} style:opacity={view.s.background.dim}></span>{/if}
           {#if photo.thumbnail}<img src={photo.thumbnail} alt="" draggable="false" style:left="{view.px}px" style:top="{view.py}px" style:width="{view.pw}px" style:height="{view.ph}px"/>{/if}
         </span>
       </span>
@@ -55,6 +56,9 @@
 .overview-item:focus-visible{outline:none;}
 .overview-item:focus-visible .overview-stage{outline:2px solid var(--accent,#e3a446);outline-offset:2px;}
 .overview-canvas{position:relative;display:block;box-shadow:0 6px 18px rgb(0 0 0 / .35);}
+.overview-canvas{overflow:hidden;}
+.overview-backdrop{position:absolute;inset:0;background-size:cover;background-position:center;transform:scale(1.08);}
+.overview-backdrop.tint{transform:none;}
 .overview-canvas img{position:absolute;display:block;object-fit:fill;}
 .overview-check{position:absolute;top:8px;left:8px;width:18px;height:18px;border-radius:50%;border:1.5px solid var(--border-strong,#444);display:grid;place-items:center;color:var(--on-accent,#1a1408);}
 .overview-item.selected .overview-check{background:var(--accent,#e3a446);border-color:var(--accent,#e3a446);}
