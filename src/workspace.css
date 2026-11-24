@@ -225,3 +225,79 @@ html, body { background: var(--ws-bg); }
   :root .ws.gallery-shell .add-tile { block-size: 52px; inline-size: 52px; }
   :root .ws.gallery-shell .filmstrip-section { padding-block: 6px 8px; gap: 4px; }
 }
+
+/* ── Dialogs ────────────────────────────────────────────────────────────
+   One Darkroom look for every modal: same surface, header, footer, buttons
+   and fields in both themes. Dialogs live outside .ws, so they use the
+   :root tokens directly. `:root dialog.x` outranks the older theme layers
+   and component-scoped styles without !important. */
+:root { --ws-dialog-backdrop: rgb(0 0 0 / .55); --ws-field: #141414; }
+:root[data-theme="light"] { --ws-dialog-backdrop: rgb(46 36 20 / .32); --ws-field: #ffffff; }
+:root dialog:is(.export-review, .job-dialog, .templates-dialog, .photo-removal-dialog, .agent-connection, .model-dialog, .shortcut-sheet, .models-config) {
+  background: var(--ws-panel); color: var(--ws-text); border: 1px solid var(--ws-line-2); border-radius: 12px;
+  box-shadow: var(--ws-shadow); font-family: var(--ws-sans);
+  --ink: var(--ws-text); --muted: var(--ws-muted); --faint: var(--ws-faint); --border: var(--ws-line); --border-strong: var(--ws-line-2);
+  --surface: var(--ws-panel); --surface-soft: var(--ws-raised); --paper: var(--ws-raised); --primary: var(--accent); --seal: var(--accent);
+}
+:root dialog:is(.export-review, .job-dialog, .templates-dialog, .photo-removal-dialog, .agent-connection, .model-dialog, .shortcut-sheet, .models-config)::backdrop { background: var(--ws-dialog-backdrop); }
+:root dialog:is(.export-review, .job-dialog, .templates-dialog, .agent-connection, .model-dialog, .shortcut-sheet, .models-config) > header {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  padding: 18px 20px 15px 22px; border-block-end: 1px solid var(--ws-line); background: transparent;
+}
+:root dialog:is(.export-review, .job-dialog, .templates-dialog, .agent-connection, .model-dialog, .shortcut-sheet, .models-config) > header h2,
+:root dialog.photo-removal-dialog h2 {
+  display: flex; align-items: center; gap: 8px; margin: 0;
+  font-family: var(--ws-sans); font-size: 15px; font-weight: 600; line-height: 1.35; letter-spacing: 0; color: var(--ws-text);
+}
+/* Titles read as words; the icons were only on some dialogs. */
+:root dialog:is(.templates-dialog, .agent-connection, .models-config) > header h2 > svg { display: none; }
+:root dialog:is(.export-review, .job-dialog, .templates-dialog, .agent-connection, .model-dialog, .shortcut-sheet, .models-config) > header p {
+  margin: 4px 0 0; font-size: 12px; line-height: 1.5; color: var(--ws-muted);
+}
+:root dialog:is(.export-review, .job-dialog, .templates-dialog, .agent-connection, .model-dialog, .shortcut-sheet, .models-config) > header .icon-button {
+  flex: none; inline-size: 30px; block-size: 30px; margin: -4px -4px 0 0; border: 0; border-radius: 7px; background: transparent; color: var(--ws-muted);
+}
+:root dialog:is(.export-review, .job-dialog, .templates-dialog, .agent-connection, .model-dialog, .shortcut-sheet, .models-config) > header .icon-button:hover { background: var(--ws-hover); color: var(--ws-text); }
+:root dialog:is(.export-review, .job-dialog, .templates-dialog, .agent-connection, .model-dialog, .models-config) > footer {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 13px 20px 13px 22px; border-block-start: 1px solid var(--ws-line); background: var(--ws-bg);
+  font-size: 11.5px; line-height: 1.5; color: var(--ws-faint);
+}
+:root dialog:is(.export-review, .job-dialog, .templates-dialog, .agent-connection, .model-dialog, .models-config) > footer :is(p, span) { font-size: 11.5px; color: var(--ws-faint); }
+:root dialog:is(.export-review, .job-dialog, .templates-dialog, .agent-connection, .model-dialog, .models-config) > footer > div { display: flex; gap: 8px; }
+
+/* Buttons and fields inside dialogs */
+:root dialog .button.primary, :root dialog .chatgpt-signin {
+  background: var(--accent); border: 1px solid var(--accent); color: var(--on-accent); font-weight: 600; box-shadow: none;
+}
+:root dialog .button.primary:hover:not(:disabled), :root dialog .chatgpt-signin:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+:root dialog .button.primary:disabled, :root dialog .chatgpt-signin:disabled { opacity: .4; filter: saturate(.6); }
+:root dialog .chatgpt-signin { min-height: 38px; padding: 8px 16px; border-radius: 7px; }
+:root dialog .button.secondary { background: var(--ws-raised); border: 1px solid var(--ws-line-2); color: var(--ws-text); }
+:root dialog .button.secondary:hover:not(:disabled) { background: var(--ws-raised-2); border-color: var(--ws-faint); }
+:root dialog :is(input:not([type=range]):not([type=color]):not([type=radio]):not([type=checkbox]), select, textarea) {
+  background: var(--ws-field); border: 1px solid var(--ws-line-2); border-radius: 7px; color: var(--ws-text);
+}
+:root dialog :is(input:not([type=range]):not([type=color]):not([type=radio]):not([type=checkbox]), select, textarea):focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+:root dialog :is(input[type=checkbox], input[type=radio]) { accent-color: var(--accent); }
+:root dialog :is(button, summary, a):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+:root dialog .field-label { color: var(--ws-muted); }
+:root dialog .field-help, :root dialog .setup-note { color: var(--ws-faint); }
+:root dialog .field-error { color: #e07a6a; background: rgb(224 122 106 / .1); border-color: rgb(224 122 106 / .3); }
+:root[data-theme="light"] dialog .field-error { color: #b2412f; background: rgb(178 65 47 / .07); }
+:root dialog summary { color: var(--ws-muted); }
+:root dialog summary:hover { color: var(--ws-text); }
+
+/* Model setup: left list matches the inspector's selected-row language. */
+:root dialog.models-config nav { border-inline-end: 1px solid var(--ws-line); background: var(--ws-bg); }
+:root dialog.models-config nav button { border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--ws-text); }
+:root dialog.models-config nav button:hover:not(:disabled) { background: var(--ws-hover); }
+:root dialog.models-config nav button.active { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+:root dialog.models-config nav button span { color: var(--ws-muted); }
+:root dialog.models-config .model-assignments { color: var(--ws-faint); border-color: var(--ws-line); }
+:root dialog.models-config .model-assignments strong { color: var(--ws-text); }
+
+/* Removal confirmation keeps its warning icon, in the same surface. */
+:root dialog.photo-removal-dialog { padding: 22px; }
+:root dialog.photo-removal-dialog .removal-icon { background: rgb(224 122 106 / .12); border-color: rgb(224 122 106 / .28); color: #e07a6a; }
+:root[data-theme="light"] dialog.photo-removal-dialog .removal-icon { color: #b2412f; }
