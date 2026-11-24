@@ -1,0 +1,23 @@
+// Keyboard shortcut sheet opens from the header and with "?", not while typing.
+import assert from 'node:assert/strict';
+const task=await taskSpace('Margin shortcut sheet');console.log({spaceId:task.spaceId});
+const page=task.page('p1');
+await page.goto('http://127.0.0.1:1420/tests/ui/app.html');
+await page.waitForFunction(()=>window.__qa?.dropReady&&document.querySelector('.zoom-photo')?.complete);
+await page.selectOption('.language-select','en');
+await page.click('.filmstrip .thumbnail >> nth=0');
+await page.keyboard.press('Shift+Slash');
+await page.waitForFunction(()=>document.querySelector('.shortcut-sheet')?.open);
+const rows=await page.evaluate(()=>[...document.querySelectorAll('.shortcut-row dt')].map(d=>d.textContent));
+assert.ok(rows.includes('Reorder')&&rows.includes('Undo')&&rows.includes('Fit to window'),rows.join(', '));
+await page.keyboard.press('Escape');
+await page.waitForFunction(()=>!document.querySelector('.shortcut-sheet').open);
+console.log('PASS: ? opens the shortcut sheet and Escape closes it');
+await page.click('.shortcuts-button');
+await page.waitForFunction(()=>document.querySelector('.shortcut-sheet')?.open);
+await page.keyboard.press('Escape');
+await page.focus('#frame-hex');
+await page.keyboard.press('Shift+Slash');
+assert.equal(await page.evaluate(()=>document.querySelector('.shortcut-sheet').open),false,'Typing ? in a field does not open the sheet');
+console.log('PASS: header button opens it; typing ? in a field does not');
+await task.finish();

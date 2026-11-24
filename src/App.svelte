@@ -7,11 +7,12 @@
   import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
   import { open } from '@tauri-apps/plugin-dialog';
   import {
-    ImagePlus, Plus, Download, FolderOpen, ArrowLeftRight, X, Check,
+    ImagePlus, Plus, Download, Keyboard, FolderOpen, ArrowLeftRight, X, Check,
     LoaderCircle, AlertCircle, CheckCircle2, Bookmark, Trash2, RotateCcw, RotateCw, Plug,
     Image as ImageIcon, Type, ChevronDown, FileImage, List, Pipette, WandSparkles, SlidersHorizontal, Languages, Aperture, SunMoon,
     Undo2, Redo2, LayoutGrid, Square, Copy, ClipboardPaste, Columns2, ChevronRight, Sparkles } from '@lucide/svelte';
   import OverviewGrid from './lib/OverviewGrid.svelte';
+  import ShortcutSheet from './lib/ShortcutSheet.svelte';
   import {photoPalette} from './lib/photo-palette';
   import ModelPanel from './lib/ModelPanel.svelte';
   import ModelsConfig from './lib/ModelsConfig.svelte';
@@ -451,6 +452,7 @@
   let settingsStepTimer: ReturnType<typeof setTimeout> | undefined;
   let lastSettingsEditAt = 0, lastRemovalAt = 0, lastOrderAt = 0, lastUndoKind: 'settings'|'removal'|'order'|null = null;
   let orderUndo:{before:string[];after:string[]}[]=[], orderRedo:{before:string[];after:string[]}[]=[];
+  let shortcutSheet:ShortcutSheet;
   let photoDrag:{ids:string[];x:number;y:number;pointer:number;active:boolean}|null=null, dropIndex=-1, suppressThumbClick=false;
   $: removalUndo,removalRedo,lastRemovalAt=Date.now();
 
@@ -1443,6 +1445,10 @@
     if(key==='c'&&selectedPhoto){event.preventDefault();copySettings();}
     else if(key==='v'&&copiedSettings){event.preventDefault();void pasteSettings();}
   }
+  if (event.key === '?' && !typing && !event.metaKey && !event.ctrlKey && !event.altKey && !document.querySelector('dialog[open]')) {
+    event.preventDefault();
+    shortcutSheet.open();
+  }
 }} />
 
 <div class:drop-active={dragActive} class="app-shell gallery-shell ws">
@@ -1465,6 +1471,7 @@
       <button type="button" class="icon-button header-undo" aria-label={$t('撤销')} title={$t('撤销（⌘ / Ctrl+Z）')} disabled={!desktop||!(removalUndo.length||settingsUndo.length||orderUndo.length||pendingUndo)||undoing||agentBusy||isRunning} on:click={undoAny}><Undo2 size={16}/></button>
       <button type="button" class="icon-button header-redo" aria-label={$t('重做')} title={$t('重做（⌘ / Ctrl+Shift+Z）')} disabled={!desktop||!(removalRedo.length||settingsRedo.length||orderRedo.length)||undoing||agentBusy||isRunning} on:click={redoAny}><Redo2 size={16}/></button>
       <span class="header-divider" aria-hidden="true"></span>
+      <button type="button" class="icon-button shortcuts-button" aria-label={$t('键盘快捷键')} title={$t('键盘快捷键（?）')} aria-keyshortcuts="Shift+Slash" on:click={()=>shortcutSheet.open()}><Keyboard size={16}/></button>
       <button class="button quiet compact import-button" on:click={choosePhotos} disabled={!desktop || importing || choosingPhotos || agentBusy || loading || !initialized}>
         {#if importing}<LoaderCircle size={15} class="spin" />{:else}<ImagePlus size={16} />{/if}
         {importing ? $t("正在导入") : $t("导入")}
@@ -1816,6 +1823,8 @@
   </div>
   <footer><button class="button secondary" disabled={starting} on:click={()=>exportDialog.close()}>{$t('返回编辑')}</button><button type="button" class="button primary start-export" on:click={startBatch} disabled={!desktop||!initialized||!exportPhotoIds.length||!!localError||starting||importing||isRunning}>{#if starting}<LoaderCircle size={16} class="spin"/>{:else}<Download size={16}/>{/if}{starting?$t('准备导出'):$t(exportPhotoIds.length===1?'开始导出 1 张':'开始导出 {0} 张',{0:exportPhotoIds.length})}</button></footer>
 </dialog>
+
+<ShortcutSheet bind:this={shortcutSheet}/>
 
 <dialog bind:this={jobDialog} class="job-dialog">
   <header><div><h2>{$t("处理记录")}</h2><p>{completedCount} {$t("张已导出")}{failedCount ? $t("，{0} 张失败", {0:failedCount}) : ''}{isRunning ? $t(" · 正在处理") : ''} {$t("· 沿用本批次开始时的设置")}</p></div><button class="icon-button" aria-label={$t("关闭处理记录")} on:click={() => jobDialog.close()}><X size={18} /></button></header>
