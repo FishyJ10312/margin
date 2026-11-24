@@ -48,6 +48,17 @@ assert.match(await page.evaluate(()=>document.querySelector('.art-image').textCo
 assert.equal(await page.evaluate(()=>window.__qa.requests.filter(r=>/^generate_/.test(r.cmd)).length),1);
 assert.equal(await page.evaluate(()=>document.querySelector('.model-dialog [type=submit]').disabled),true,'A generated result waiting for a local preview must not permit another paid request');
 assert.equal(await page.evaluate(()=>document.querySelector('.model-dialog form > fieldset > .model-consent input').checked),false,'Consent is single-use for each model dispatch');
+// Closing the dialog must not discard the received result: reopening restores
+// it with only the free local retry, and no further model request is sent.
+await page.keyboard.press('Escape');
+await page.waitForSelector('.model-dialog',{state:'detached'});
+await page.click('.art-trigger');
+await page.waitForSelector('#retry-local-preview');
+assert.match(await page.evaluate(()=>document.querySelector('.model-problem').textContent),/Restored the model result/);
+assert.equal(await page.evaluate(()=>document.querySelector('#generation-method').value),'image','The restored result keeps its generation mode');
+assert.equal(await page.evaluate(()=>document.querySelector('.model-dialog [type=submit]').disabled),true,'A restored result still blocks another paid request until resolved');
+assert.equal(await page.evaluate(()=>window.__qa.requests.filter(r=>/^generate_/.test(r.cmd)).length),1,'Reopening never re-dispatches the model');
+console.log('PASS: closing and reopening the dialog keeps a received result awaiting its local preview.');
 await page.click('#retry-local-preview');
 await page.waitForSelector('.art-suggestions img');
 await page.waitForFunction(()=>!document.querySelector('[data-elapsed-seconds]'));
