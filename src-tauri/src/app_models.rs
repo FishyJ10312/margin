@@ -221,6 +221,15 @@ pub struct ImportResult {
     pub photo_selection: PhotoSelection,
 }
 
+/// Result of moving photos within the catalogue.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogOrder {
+    pub order: Vec<String>,
+    pub catalog_revision: u64,
+    pub photo_selection: PhotoSelection,
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PhotoRemovalReceipt {

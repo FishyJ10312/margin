@@ -1,5 +1,5 @@
 use crate::app_models::{
-    AppSnapshot, BatchSnapshot, ImportResult, JobItem, Photo, PhotoRemovalReceipt, PhotoSelection, Preset, RemovedPhotos, RestoredPhotos, SettingsCommit, StoredState,
+    AppSnapshot, BatchSnapshot, CatalogOrder, ImportResult, JobItem, Photo, PhotoRemovalReceipt, PhotoSelection, Preset, RemovedPhotos, RestoredPhotos, SettingsCommit, StoredState,
 };
 use crate::{imaging, source_io};
 use crate::model::{Ratio, RenderSettings};
@@ -341,6 +341,34 @@ impl Backend {
         drop(data);
         if empty { imaging::clear_image_cache(); }
         Ok(receipt)
+    }
+
+    /// Replaces the catalogue order with `order`, which must list exactly the
+    /// current photos. Export order follows the catalogue order.
+    pub fn reorder_photos(&self, order: Vec<String>, catalog_revision: u64) -> Result<CatalogOrder, String> {
+        let mut data = self.lock()?;
+        if self.worker_active.load(Ordering::Acquire) {
+            return Err("请等待当前操作完成后再调整顺序".into());
+        }
+        let current: Vec<String> = data.photos.iter().map(|p| p.id.clone()).collect();
+        let wanted: HashSet<&String> = order.iter().collect();
+        if data.catalog_revision != catalog_revision
+            || order.len() != current.len()
+            || wanted.len() != order.len()
+            || !current.iter().all(|id| wanted.contains(id))
+        {
+            return Err("当前照片列表已变化，请重试".into());
+        }
+        if order == current {
+            return Ok(CatalogOrder { order, catalog_revision: data.catalog_revision, photo_selection: Self::current_selection(&data) });
+        }
+        let mut candidate = data.clone();
+        let mut pool: HashMap<String, Photo> = candidate.photos.drain(..).map(|p| (p.id.clone(), p)).collect();
+        candidate.photos = order.iter().filter_map(|id| pool.remove(id)).collect();
+        candidate.photo_selection = Some(Self::current_selection(&data).restored(&order, &HashMap::new()));
+        candidate.catalog_revision = candidate.catalog_revision.saturating_add(1);
+        self.commit(&mut data, candidate)?;
+        Ok(CatalogOrder { order, catalog_revision: data.catalog_revision, photo_selection: Self::current_selection(&data) })
     }
 
     pub fn save_photo_selection(&self, selection: PhotoSelection, catalog_revision: u64) -> Result<bool, String> {
@@ -1244,6 +1272,34 @@ mod tests {
     }
 
     #[cfg(unix)]
+    #[test]
+    fn reorder_persists_requires_the_same_photos_and_rejects_stale_revisions() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = dir.path().join("state");
+        let paths: Vec<String> = (0..3)
+            .map(|i| {
+                let path = dir.path().join(format!("{i}.png"));
+                image::RgbImage::from_pixel(40, 30, image::Rgb([i * 60, 90, 120])).save(&path).unwrap();
+                path.to_string_lossy().into_owned()
+            })
+            .collect();
+        let backend = Backend::new(state.clone()).unwrap();
+        let imported = backend.import_photos(paths).unwrap();
+        let ids: Vec<String> = imported.photos.iter().map(|p| p.id.clone()).collect();
+        let revision = imported.catalog_revision;
+        let moved = vec![ids[2].clone(), ids[0].clone(), ids[1].clone()];
+        assert!(backend.reorder_photos(vec![ids[0].clone(), ids[1].clone()], revision).is_err(), "missing photo");
+        assert!(backend.reorder_photos(vec![ids[0].clone(), ids[0].clone(), ids[1].clone()], revision).is_err(), "duplicate");
+        assert!(backend.reorder_photos(moved.clone(), revision + 7).is_err(), "stale revision");
+        let result = backend.reorder_photos(moved.clone(), revision).unwrap();
+        assert_eq!(result.order, moved);
+        assert_eq!(result.catalog_revision, revision + 1);
+        let order = |b: &Backend| b.snapshot().unwrap().photos.iter().map(|p| p.id.clone()).collect::<Vec<_>>();
+        assert_eq!(order(&backend), moved);
+        drop(backend);
+        assert_eq!(order(&Backend::new(state).unwrap()), moved, "order survives a restart");
+    }
+
     #[test]
     fn startup_restores_cached_thumbnails_without_opening_blocked_photo_sources() {
         let dir = tempfile::tempdir().unwrap();

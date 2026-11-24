@@ -104,6 +104,12 @@ async fn import_photos(
 }
 
 #[tauri::command]
+async fn reorder_photos(order: Vec<String>, catalog_revision: u64, state: BackendState<'_>) -> Result<app_models::CatalogOrder, String> {
+    let backend = state.inner().clone();
+    blocking(move || backend.reorder_photos(order, catalog_revision)).await
+}
+
+#[tauri::command]
 async fn remove_photos(ids: Vec<String>, selection: Option<app_models::PhotoSelection>, state: BackendState<'_>) -> Result<Option<app_models::PhotoRemovalReceipt>, String> {
     let backend = state.inner().clone();
     blocking(move || backend.remove_photos_with_selection(ids, selection)).await
@@ -604,6 +610,7 @@ pub fn run() {
             cancel_art_frames,
             import_photos,
             remove_photos,
+            reorder_photos,
             undo_photo_removal,
             redo_photo_removal,
             save_photo_selection,

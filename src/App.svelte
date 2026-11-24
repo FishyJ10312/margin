@@ -449,7 +449,9 @@
   let settingsUndo: SettingsEdit[] = [], settingsRedo: SettingsEdit[] = [];
   let pendingUndo: SettingsEdit | null = null;
   let settingsStepTimer: ReturnType<typeof setTimeout> | undefined;
-  let lastSettingsEditAt = 0, lastRemovalAt = 0, lastUndoKind: 'settings'|'removal'|null = null;
+  let lastSettingsEditAt = 0, lastRemovalAt = 0, lastOrderAt = 0, lastUndoKind: 'settings'|'removal'|'order'|null = null;
+  let orderUndo:{before:string[];after:string[]}[]=[], orderRedo:{before:string[];after:string[]}[]=[];
+  let photoDrag:{ids:string[];x:number;y:number;pointer:number;active:boolean}|null=null, dropIndex=-1, suppressThumbClick=false;
   $: removalUndo,removalRedo,lastRemovalAt=Date.now();
 
   function captureSettings(ids: Set<string> = new Set()): SettingsEdit {
@@ -527,14 +529,84 @@
   const inLibrary=()=>!!document.activeElement?.closest('.library-footer');
   function undoAny(){
     if(settingsStepTimer)commitSettingsStep();
+    if(orderUndo.length&&lastOrderAt>=lastSettingsEditAt&&lastOrderAt>=lastRemovalAt){lastUndoKind='order';void undoOrder();return;}
     const preferRemoval=inLibrary()&&removalUndo.length>0;
     if(!preferRemoval&&settingsUndo.length&&(!removalUndo.length||lastSettingsEditAt>=lastRemovalAt)){lastUndoKind='settings';undoSettings();}
     else if(removalUndo.length){lastUndoKind='removal';void undoPhotoRemoval();}
   }
   function redoAny(){
+    if(orderRedo.length&&(lastUndoKind==='order'||!settingsRedo.length&&!removalRedo.length)){void redoOrder();return;}
     const preferRemoval=inLibrary()&&removalRedo.length>0;
     if(!preferRemoval&&settingsRedo.length&&(lastUndoKind==='settings'||!removalRedo.length))redoSettings();
     else if(removalRedo.length)void redoPhotoRemoval();
+  }
+
+  /** Keeps every current photo exactly once, in `wanted` order where possible. */
+  function fitOrder(wanted:string[]){
+    const current=photos.map(photo=>photo.id),present=new Set(current),seen=new Set<string>();
+    const kept=wanted.filter(id=>present.has(id)&&!seen.has(id)&&!!seen.add(id));
+    return [...kept,...current.filter(id=>!seen.has(id))];
+  }
+  async function applyOrder(order:string[]):Promise<boolean>{
+    if(!desktop||!initialized||loading||isRunning||starting||importing||undoing||agentBusy||scopeBusy)return false;
+    order=fitOrder(order);
+    if(order.join('\n')===photos.map(photo=>photo.id).join('\n'))return false;
+    undoing=true;undoError='';
+    try{
+      const result=await invoke<{order:string[];catalogRevision:number;photoSelection:PhotoSelection}>('reorder_photos',{order,catalogRevision});
+      const byId=new Map(photos.map(photo=>[photo.id,photo]));
+      photos=result.order.map(id=>byId.get(id)).filter((photo):photo is Photo=>!!photo);
+      catalogRevision=result.catalogRevision;
+      photoSelection=restoredPhotoSelection(result.order,photoSelection);
+      return true;
+    }catch(error){undoError=errorMessage(error);return false;}
+    finally{undoing=false;}
+  }
+  /** Moves `ids` (kept in their current relative order) so they start before index `to` of the current list. */
+  async function movePhotos(ids:string[],to:number){
+    const before=photos.map(photo=>photo.id),moving=new Set(ids);
+    const rest=before.filter(id=>!moving.has(id));
+    const insertAt=before.slice(0,to).filter(id=>!moving.has(id)).length;
+    const after=[...rest.slice(0,insertAt),...before.filter(id=>moving.has(id)),...rest.slice(insertAt)];
+    if(await applyOrder(after)){orderUndo=[...orderUndo.slice(-19),{before,after}];orderRedo=[];lastOrderAt=Date.now();lastUndoKind=null;}
+  }
+  function nudgeSelection(delta:number){
+    const ids=photos.map(photo=>photo.id),chosen=ids.filter(id=>selectedPhotoIds.has(id));
+    if(!chosen.length)return;
+    const first=ids.indexOf(chosen[0]),last=ids.indexOf(chosen[chosen.length-1]);
+    if(delta<0&&first>0)void movePhotos(chosen,first-1);
+    else if(delta>0&&last<ids.length-1)void movePhotos(chosen,last+2);
+  }
+  async function undoOrder(){
+    const entry=orderUndo.at(-1);if(!entry)return;
+    if(await applyOrder(entry.before)){orderUndo=orderUndo.slice(0,-1);orderRedo=[...orderRedo,entry];}
+  }
+  async function redoOrder(){
+    const entry=orderRedo.at(-1);if(!entry)return;
+    if(await applyOrder(entry.after)){orderRedo=orderRedo.slice(0,-1);orderUndo=[...orderUndo,entry];lastOrderAt=Date.now();}
+  }
+  function thumbPointerDown(event:PointerEvent,id:string){
+    if(event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||photos.length<2)return;
+    const ids=selectedPhotoIds.has(id)?photos.map(photo=>photo.id).filter(other=>selectedPhotoIds.has(other)):[id];
+    photoDrag={ids,x:event.clientX,y:event.clientY,pointer:event.pointerId,active:false};
+  }
+  function thumbPointerMove(event:PointerEvent){
+    if(!photoDrag||event.pointerId!==photoDrag.pointer)return;
+    if(!photoDrag.active){
+      if(Math.hypot(event.clientX-photoDrag.x,event.clientY-photoDrag.y)<6)return;
+      if(undoing||isRunning||agentBusy||scopeBusy){photoDrag=null;return;}
+      photoDrag.active=true;
+    }
+    const tiles=[...document.querySelectorAll<HTMLElement>('.filmstrip .thumbnail[data-photo-id]')];
+    let index=tiles.length;
+    for(let i=0;i<tiles.length;i++){const box=tiles[i].getBoundingClientRect();if(event.clientX<box.left+box.width/2){index=i;break;}}
+    dropIndex=index;
+  }
+  function thumbPointerUp(event:PointerEvent){
+    if(!photoDrag||event.pointerId!==photoDrag.pointer)return;
+    const drag=photoDrag;photoDrag=null;
+    if(drag.active&&dropIndex>=0){suppressThumbClick=true;setTimeout(()=>suppressThumbClick=false,0);void movePhotos(drag.ids,dropIndex);}
+    dropIndex=-1;
   }
 
   function syncControls() {
@@ -1356,7 +1428,7 @@
   }
 </script>
 
-<svelte:window on:blur={() => comparingOriginal = false} on:keydown={(event) => {
+<svelte:window on:pointermove={thumbPointerMove} on:pointerup={thumbPointerUp} on:pointercancel={()=>{photoDrag=null;dropIndex=-1;}} on:blur={() => comparingOriginal = false} on:keydown={(event) => {
   if (event.key === 'Escape' && (trialIndex >= 0 || comparingOriginal) && !document.querySelector('dialog[open]')) {
     event.preventDefault();
     cancelFrameTrial();
@@ -1390,8 +1462,8 @@
       {/if}
     </div>
     <div class="header-actions">
-      <button type="button" class="icon-button header-undo" aria-label={$t('撤销')} title={$t('撤销（⌘ / Ctrl+Z）')} disabled={!desktop||!(removalUndo.length||settingsUndo.length||pendingUndo)||undoing||agentBusy||isRunning} on:click={undoAny}><Undo2 size={16}/></button>
-      <button type="button" class="icon-button header-redo" aria-label={$t('重做')} title={$t('重做（⌘ / Ctrl+Shift+Z）')} disabled={!desktop||!(removalRedo.length||settingsRedo.length)||undoing||agentBusy||isRunning} on:click={redoAny}><Redo2 size={16}/></button>
+      <button type="button" class="icon-button header-undo" aria-label={$t('撤销')} title={$t('撤销（⌘ / Ctrl+Z）')} disabled={!desktop||!(removalUndo.length||settingsUndo.length||orderUndo.length||pendingUndo)||undoing||agentBusy||isRunning} on:click={undoAny}><Undo2 size={16}/></button>
+      <button type="button" class="icon-button header-redo" aria-label={$t('重做')} title={$t('重做（⌘ / Ctrl+Shift+Z）')} disabled={!desktop||!(removalRedo.length||settingsRedo.length||orderRedo.length)||undoing||agentBusy||isRunning} on:click={redoAny}><Redo2 size={16}/></button>
       <span class="header-divider" aria-hidden="true"></span>
       <button class="button quiet compact import-button" on:click={choosePhotos} disabled={!desktop || importing || choosingPhotos || agentBusy || loading || !initialized}>
         {#if importing}<LoaderCircle size={15} class="spin" />{:else}<ImagePlus size={16} />{/if}
@@ -1664,7 +1736,7 @@
     {#if isRunning && totalCount > 0}<div class="batch-track" role="progressbar" aria-label={$t("批量导出进度")} aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(progress)}><div style:width={`${progress}%`}></div></div>{/if}
     <section class="filmstrip-section" inert={agentBusy} aria-label={$t('已导入的照片')}>
       <div class="library-bar">
-        <div class="library-summary"><strong>{photos.length} {$t('张照片',{count:photos.length})}{#if photos.length}<span class="selection-count" role="status">{$t('已选 {0} 张',{0:selectedIds.length})}</span>{/if}</strong><span id="photo-selection-hint" title={$t('先单击起点，再按住 Shift 点击终点；⌘ / Ctrl+A 全选，Esc 取消选择')}>{$t(photos.length>1?'Shift 连选 · ⌘ / Ctrl+A 全选 · Esc 取消':'全部照片共用当前设置')}</span></div>
+        <div class="library-summary"><strong>{photos.length} {$t('张照片',{count:photos.length})}{#if photos.length}<span class="selection-count" role="status">{$t('已选 {0} 张',{0:selectedIds.length})}</span>{/if}</strong><span id="photo-selection-hint" title={$t('先单击起点，再按住 Shift 点击终点；⌘ / Ctrl+A 全选，Esc 取消选择')}>{$t(photos.length>1?'Shift 连选 · 拖动排序 · ⌘ / Ctrl+A 全选':'全部照片共用当前设置')}</span></div>
         {#if photos.length}<div class="library-tools" role="toolbar" aria-label={$t('照片操作')}>
           <button type="button" class="text-button copy-settings" title={$t('复制当前照片的边框和水印（⌘ / Ctrl+Shift+C）')} disabled={!selectedPhoto||scopeBusy||isRunning||agentBusy} on:click={copySettings}><Copy size={13}/>{$t('复制设置')}</button>
           <button type="button" class="text-button paste-settings" title={copiedSettings?$t('把「{0}」的设置粘贴到选中的照片（⌘ / Ctrl+Shift+V）',{0:copiedFrom}):$t('先复制一张照片的设置')} disabled={!copiedSettings||!selectedIds.length||scopeBusy||isRunning||agentBusy} on:click={pasteSettings}><ClipboardPaste size={13}/>{$t(selectedIds.length>1?'粘贴到 {0} 张':'粘贴设置',{0:selectedIds.length})}</button>
@@ -1673,9 +1745,9 @@
         </div>{/if}
       </div>
       <div class="filmstrip" role="group" aria-label={$t('照片选择')} aria-describedby="photo-selection-hint" aria-keyshortcuts="Meta+A Control+A Escape Meta+Z Control+Z Meta+Shift+Z Control+Shift+Z">
-        {#each photos as photo (photo.id)}
+        {#each photos as photo,index (photo.id)}
           {@const job = batch?.items.find((item) => item.photoId === photo.id)}
-          <button class:selected={selectedPhotoIds.has(photo.id)} class:active={photo.id===selectedId} class="thumbnail" data-photo-id={photo.id} on:click={event=>selectPhoto(photo.id,event)} on:contextmenu={event=>photoActions.openPhotoMenu(event,photo.id)} aria-label={$t('预览 {0}',{0:photo.name}) + (photo.settings ? ' · ' + $t('单独设置') : '')} aria-pressed={selectedPhotoIds.has(photo.id)} aria-current={photo.id===selectedId?'true':undefined} aria-haspopup="menu" title={photo.name}>
+          <button class:selected={selectedPhotoIds.has(photo.id)} class:active={photo.id===selectedId} class:drop-before={dropIndex===index} class:drop-after={dropIndex===photos.length&&index===photos.length-1} class:dragging={photoDrag?.active&&photoDrag.ids.includes(photo.id)} class="thumbnail" data-photo-id={photo.id} on:pointerdown={event=>thumbPointerDown(event,photo.id)} on:click={event=>{if(!suppressThumbClick)selectPhoto(photo.id,event);}} on:contextmenu={event=>photoActions.openPhotoMenu(event,photo.id)} aria-label={$t('预览 {0}',{0:photo.name}) + (photo.settings ? ' · ' + $t('单独设置') : '')} aria-pressed={selectedPhotoIds.has(photo.id)} aria-current={photo.id===selectedId?'true':undefined} aria-haspopup="menu" title={photo.name}>
             {#if photo.thumbnail}<img src={photo.thumbnail} alt="" draggable="false"/>{:else}<FileImage size={22}/>{/if}{#if photo.settings}<span class="own-badge" title={$t('单独设置')} aria-hidden="true"><SlidersHorizontal size={11}/></span>{/if}
             {#if job?.status==='completed'}<span class="thumbnail-status success"><Check size={10} strokeWidth={3}/></span>{:else if job?.status==='failed'}<span class="thumbnail-status failed"><AlertCircle size={11}/></span>{:else if job?.status==='running'}<span class="thumbnail-status"><LoaderCircle size={11} class="spin"/></span>{/if}
           </button>
@@ -1703,7 +1775,7 @@
   {#if dragActive}<div class="drop-overlay"><div><ImagePlus size={30} strokeWidth={1.5} /><strong>{$t(dragCount?'松开以添加 {0} 张照片':'松开以添加一组照片',{0:dragCount})}</strong><span>JPG · PNG · HEIC · HEIF</span><span>{$t(importing||loading?'会自动排队，随后逐张导入':'支持多选拖入，原照片保留在原位置')}</span></div></div>{/if}
 </div>
 
-<PhotoLibraryActions bind:this={photoActions} {photos} {selectedIds} onstep={stepPhoto} canUndo={!!removalUndo.length||!!settingsUndo.length||!!pendingUndo} onundo={undoAny} canRedo={!!removalRedo.length||!!settingsRedo.length} onredo={redoAny} disabled={!desktop||!initialized||loading||isRunning||starting||importing||undoing||agentBusy||scopeBusy} selectionDisabled={!desktop||!initialized||loading||starting||importing||pickingColor||undoing||agentBusy||scopeBusy} onselectall={selectAllPhotos} onclearselection={clearSelectedPhotos} oncontextselect={selectContextPhoto} onremove={removePhotos} onerror={message=>notices=[...notices,message]}/>
+<PhotoLibraryActions bind:this={photoActions} {photos} {selectedIds} onstep={stepPhoto} canUndo={!!removalUndo.length||!!settingsUndo.length||!!orderUndo.length||!!pendingUndo} onundo={undoAny} canRedo={!!removalRedo.length||!!settingsRedo.length||!!orderRedo.length} onredo={redoAny} onmove={nudgeSelection} disabled={!desktop||!initialized||loading||isRunning||starting||importing||undoing||agentBusy||scopeBusy} selectionDisabled={!desktop||!initialized||loading||starting||importing||pickingColor||undoing||agentBusy||scopeBusy} onselectall={selectAllPhotos} onclearselection={clearSelectedPhotos} oncontextselect={selectContextPhoto} onremove={removePhotos} onerror={message=>notices=[...notices,message]}/>
 
 {#if agentOpen}<AgentConnection onclose={()=>agentOpen=false} onstatus={status=>agentConnected=status.enabled}/>{/if}
 

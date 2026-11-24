@@ -88,6 +88,7 @@ Object.assign(window,{__TAURI_INTERNALS__:{metadata:{currentWindow:{label:'main'
   selectionControl.active++;selectionControl.maxActive=Math.max(selectionControl.maxActive,selectionControl.active);
   try{if(selectionControl.hold)await new Promise<void>(resolve=>selectionControl.pending.push(resolve));if(args.catalogRevision!==catalogRevision)return false;fixtureSelection=restoredPhotoSelection(fixturePhotos.map(p=>p.id),args.selection);persistCatalog();return true;}finally{selectionControl.active--;}
  }
+ if(cmd==='reorder_photos'){const current=fixturePhotos.map(p=>p.id);if(args.catalogRevision!==catalogRevision||args.order.length!==current.length||new Set(args.order).size!==current.length||!current.every((id:string)=>args.order.includes(id)))throw 'Catalog changed';const byId=new Map(fixturePhotos.map(p=>[p.id,p]));fixturePhotos=args.order.map((id:string)=>byId.get(id)!);catalogRevision++;persistCatalog();return {order:[...args.order],...catalogResult()};}
  if(cmd==='remove_photos'){
   if(removalControl.hold)await new Promise<void>(resolve=>removalControl.pending.push(resolve));if(removalControl.fail)throw 'Fixture cannot save catalog';
   const removed=fixturePhotos.filter(photo=>args.ids.includes(photo.id));if(!removed.length)return null;

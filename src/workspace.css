@@ -111,6 +111,12 @@ html, body { background: var(--ws-bg); }
 :root .ws.gallery-shell .thumbnail img { inline-size: 100%; block-size: 100%; object-fit: contain; border-radius: 1px; }
 :root .ws.gallery-shell .thumbnail.selected { opacity: 1; outline-color: color-mix(in srgb, var(--accent) 55%, transparent); background: var(--accent-soft); box-shadow: none; }
 :root .ws.gallery-shell .thumbnail.active { outline-color: var(--accent); }
+:root .ws.gallery-shell .thumbnail { touch-action: pan-x; position: relative; }
+:root .ws.gallery-shell .thumbnail.dragging { opacity: .35; }
+:root .ws.gallery-shell .thumbnail.drop-before::after,
+:root .ws.gallery-shell .thumbnail.drop-after::after { content: ""; position: absolute; inset-block: -4px; inline-size: 3px; border-radius: 2px; background: var(--accent); pointer-events: none; }
+:root .ws.gallery-shell .thumbnail.drop-before::after { inset-inline-start: -8px; }
+:root .ws.gallery-shell .thumbnail.drop-after::after { inset-inline-end: -8px; }
 :root .ws.gallery-shell .own-badge { position: absolute; box-shadow: none; inset-block-start: -4px; inset-inline-start: auto; inset-inline-end: -4px; inline-size: 14px; block-size: 14px; border-radius: 50%; background: var(--ws-own); color: var(--ws-panel); border: 2px solid var(--ws-panel); display: grid; place-items: center; }
 :root .ws.gallery-shell .own-badge svg { inline-size: 7px; block-size: 7px; }
 :root .ws.gallery-shell .add-tile { flex: 0 0 auto; inline-size: 62px; block-size: 62px; border: 1px dashed var(--ws-line-2); border-radius: 6px; background: transparent; color: var(--ws-faint); }

@@ -48,5 +48,7 @@
   "边框底色只能是纯色或照片模糊": "Border fill must be solid or blurred photo",
   "模糊程度应在 0–100% 之间": "Blur must be between 0 and 100%",
   "底色叠加应在 0–80% 之间": "Colour overlay must be between 0 and 80%",
-  "照片模糊底": "Blurred photo fill"
+  "照片模糊底": "Blurred photo fill",
+  "Shift 连选 · 拖动排序 · ⌘ / Ctrl+A 全选": "Shift range · drag to reorder · ⌘ / Ctrl+A all",
+  "请等待当前操作完成后再调整顺序": "Wait for the current operation to finish before reordering"
 }
