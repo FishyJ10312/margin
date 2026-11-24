@@ -2070,3 +2070,105 @@ mod chinese_tests {
         assert_ne!(rendered[1], rendered[2]);
     }
 }
+
+/// Landscape / portrait / square checks for every built-in template.
+/// `template_board` (ignored) writes a visual acceptance board per template:
+/// `MARGIN_BOARD_DIR=/some/dir cargo test --lib template_board -- --ignored`.
+#[cfg(test)]
+mod template_qa {
+    use super::*;
+    use image::Rgb;
+    use crate::model::Ratio;
+
+    /// A busy, asymmetric test photo so misplaced art over the opening shows.
+    fn photo(w: u32, h: u32) -> RgbaImage {
+        RgbaImage::from_fn(w, h, |x, y| {
+            let edge = x < 3 || y < 3 || x >= w - 3 || y >= h - 3;
+            if edge {
+                return Rgba([230, 40, 40, 255]);
+            }
+            let fx = x as f32 / w as f32;
+            let fy = y as f32 / h as f32;
+            let grid = (x / 40 + y / 40) % 2 == 0;
+            let g = if grid { 18 } else { 0 };
+            Rgba([(60. + 120. * fx) as u8 + g, (90. + 80. * fy) as u8 + g, (150. - 60. * fx) as u8 + g, 255])
+        })
+    }
+
+    /// Photo sizes are 900/600/720 px divided by `div`.
+    fn cases(div: u32) -> Vec<(&'static str, u32, u32, Option<Ratio>)> {
+        let (a, b, c) = (900 / div, 600 / div, 720 / div);
+        vec![
+            ("landscape", a, b, None),
+            ("portrait", b, a, None),
+            ("square", c, c, None),
+            ("landscape-1x1", a, b, Some(Ratio { width: 1., height: 1. })),
+            ("portrait-4x5", b, a, Some(Ratio { width: 4., height: 5. })),
+            ("landscape-16x9", a, b, Some(Ratio { width: 16., height: 9. })),
+        ]
+    }
+
+    fn render(id: &str, w: u32, h: u32, ratio: Option<Ratio>, border: Option<f64>) -> (RgbImage, Layout, RgbaImage) {
+        let mut s = crate::designs::settings(id).unwrap();
+        s.watermark.kind = "none".into();
+        s.export.long_edge = None;
+        s.ratio = ratio;
+        if let Some(b) = border {
+            s.border_percent = b;
+        }
+        validate_settings(&s).unwrap();
+        let source = photo(w, h);
+        let l = layout::calculate(w, h, &s).unwrap();
+        (compose(&source, &s, l, None, None, l).unwrap(), l, source)
+    }
+
+    #[test]
+    fn every_template_keeps_the_photo_opening_untouched_in_every_orientation() {
+        let mut problems = Vec::new();
+        for frame in crate::designs::library().unwrap() {
+            for (name, w, h, ratio) in cases(3) {
+                for border in [None, Some(4.)] {
+                    let (out, l, source) = render(&frame.id, w, h, ratio.clone(), border);
+                    assert_eq!((l.photo_width, l.photo_height), (w, h), "{} {name}: photo is never resized", frame.id);
+                    let mut changed = 0usize;
+                    for y in 0..h {
+                        for x in 0..w {
+                            let s = source.get_pixel(x, y);
+                            let o = out.get_pixel(x + l.x, y + l.y);
+                            if (0..3).any(|c| s[c] != o[c]) {
+                                changed += 1;
+                            }
+                        }
+                    }
+                    if changed > 0 {
+                        problems.push(format!("{} {name} border={border:?}: {changed} photo pixels covered", frame.id));
+                    }
+                }
+            }
+        }
+        assert!(problems.is_empty(), "{}", problems.join("\n"));
+    }
+
+    #[test]
+    #[ignore]
+    fn template_board() {
+        let dir = std::path::PathBuf::from(std::env::var("MARGIN_BOARD_DIR").expect("set MARGIN_BOARD_DIR"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let cell = 300u32;
+        for frame in crate::designs::library().unwrap() {
+            let cases = cases(1);
+            let mut board = RgbImage::from_pixel(cell * cases.len() as u32 + 10 * (cases.len() as u32 + 1), cell * 2 + 30, Rgb([40, 40, 40]));
+            for (row, border) in [None, Some(4.)].into_iter().enumerate() {
+                for (col, (_, w, h, ratio)) in cases.iter().enumerate() {
+                    let (out, _, _) = render(&frame.id, *w, *h, ratio.clone(), border);
+                    let f = cell as f32 / out.width().max(out.height()) as f32;
+                    let small = imageops::resize(&out, (out.width() as f32 * f) as u32, (out.height() as f32 * f) as u32, imageops::FilterType::Triangle);
+                    let ox = 10 + col as u32 * (cell + 10) + (cell - small.width()) / 2;
+                    let oy = 10 + row as u32 * (cell + 10) + (cell - small.height()) / 2;
+                    imageops::overlay(&mut board, &small, ox.into(), oy.into());
+                }
+            }
+            board.save(dir.join(format!("{}.png", frame.id))).unwrap();
+        }
+    }
+}

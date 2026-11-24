@@ -18,6 +18,11 @@ impl Default for FilmOptions {
         }
     }
 }
+/// Below this border band (as a share of the photo's short edge) perforations
+/// and edge print would shrink into specks, so they are left out and only the
+/// clean rebate remains, like a tightly cropped scan.
+pub const LEGIBLE_BAND: f32 = 0.05;
+
 pub fn is_scan(id: &str) -> bool {
     matches!(
         id,
@@ -266,6 +271,7 @@ pub fn draw_window(
     );
     let band = ((g * 0.94).min(w.min(h) * 0.18) * recipe.scale).min(g);
     let alpha = (recipe.intensity * 0.95).min(1.);
+    let legible = band >= w.min(h) * LEGIBLE_BAND;
     let mut p = Painter { image, l, ox, oy };
     let id = recipe.id.as_str();
     let board = matches!(
@@ -352,7 +358,7 @@ pub fn draw_window(
         "scan-65mm" => Some((5, 2, 0.36, 1.43)),
         _ => None,
     };
-    if let Some((count, sides, depth, aspect)) = perforations {
+    if let Some((count, sides, depth, aspect)) = perforations.filter(|_| legible) {
         let pitch = length / count as f32;
         let hole_height = band * depth;
         let hole_width = (hole_height * aspect).min(pitch * 0.65);
@@ -414,7 +420,7 @@ pub fn draw_window(
             );
         }
     }
-    if options.labels && matches!(id, "scan-120" | "scan-65mm") {
+    if legible && options.labels && matches!(id, "scan-120" | "scan-65mm") {
         let mut u = length * 0.60;
         let v = opening + band * if id == "scan-120" { 0.37 } else { 0.78 };
         for width in [0.010, 0.026, 0.011, 0.019, 0.029, 0.013, 0.010, 0.022] {
@@ -493,7 +499,7 @@ pub fn draw_window(
             },
         );
     }
-    if options.labels {
+    if legible && options.labels {
         let label = match id {
             "scan-35mm" => "35MM COLOR 400",
             "scan-amber" => "COLOR NEG 200",
@@ -534,6 +540,25 @@ pub fn draw_window(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn thin_borders_drop_perforations_and_edge_print_instead_of_drawing_specks() {
+        let rail_row_varies = |border: f64| {
+            let mut s = crate::designs::settings("scan-35mm").unwrap();
+            s.border_percent = border;
+            let l = crate::layout::calculate(900, 600, &s).unwrap();
+            let mut recipe = s.artwork.unwrap().design.unwrap();
+            recipe.film = Some(FilmOptions { labels: true, texture: 0. });
+            let mut frame = RgbImage::from_pixel(l.width, l.height, image::Rgb([28, 35, 37]));
+            draw_window(&mut frame, &recipe, l, 0, 0).unwrap();
+            let g = l.x.min(l.y) as f32;
+            let band = (g * 0.94).min(600. * 0.18);
+            let row = l.y - (band * 0.43).round() as u32;
+            let first = *frame.get_pixel(l.x, row);
+            (l.x..l.x + l.photo_width).any(|x| *frame.get_pixel(x, row) != first)
+        };
+        assert!(rail_row_varies(12.), "default border shows perforations");
+        assert!(!rail_row_varies(4.), "a 4% border leaves a clean rebate");
+    }
     #[test]
     fn portrait_film_edge_markings_are_rotated_without_mirroring() {
         let markings = |w, h| {

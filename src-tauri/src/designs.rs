@@ -622,12 +622,31 @@ pub fn elements(r: &DesignRecipe, l: Layout) -> Vec<ArtElement> {
                     );
                 }
                 if r.id == "film-edge" {
-                    for i in 0..12 {
-                        let fx = w * (0.09 + i as f32 * 0.073);
-                        let fw = (w * 0.026).min(band * 0.25);
-                        let fh = (band * 0.13).max(1.);
-                        a.rect(fx, top * 0.35, fw, fh, 0, true, 0.3);
-                        a.rect(fx, h - bottom * 0.35 - fh, fw, fh, 0, true, 0.3);
+                    // Perforated rails hug the photo like a real strip and turn with
+                    // portrait photos; space added by a fixed ratio stays plain.
+                    let vertical = ph > pw;
+                    let (start, length, room) = if vertical {
+                        (py, ph, px.min(w - px - pw))
+                    } else {
+                        (px, pw, py.min(h - py - ph))
+                    };
+                    let rail = room.min(pw.min(ph) * 0.14) * r.scale;
+                    if rail >= pw.min(ph) * crate::film::LEGIBLE_BAND {
+                        let count = ((length / (rail * 0.9)).round() as usize).clamp(6, 24);
+                        let pitch = length / count as f32;
+                        let along = (pitch * 0.36).min(rail * 0.4);
+                        let across = (rail * 0.16).max(1.);
+                        let offset = rail * 0.55 + across / 2.;
+                        for i in 0..count {
+                            let t = start + pitch * (i as f32 + 0.5) - along / 2.;
+                            if vertical {
+                                a.rect(px - offset, t, across, along, 0, true, 0.3);
+                                a.rect(px + pw + offset - across, t, across, along, 0, true, 0.3);
+                            } else {
+                                a.rect(t, py - offset, along, across, 0, true, 0.3);
+                                a.rect(t, py + ph + offset - across, along, across, 0, true, 0.3);
+                            }
+                        }
                     }
                 }
                 if r.id == "film-negative" {
@@ -1028,6 +1047,45 @@ pub fn elements(r: &DesignRecipe, l: Layout) -> Vec<ArtElement> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn film_edge_perforations_hug_the_photo_and_turn_for_portraits() {
+        let holes = |w: u32, h: u32, ratio: Option<crate::model::Ratio>, border: f64| {
+            let mut s = settings("film-edge").unwrap();
+            s.ratio = ratio;
+            s.border_percent = border;
+            let l = crate::layout::calculate(w, h, &s).unwrap();
+            let recipe = s.artwork.unwrap().design.unwrap();
+            // Points are stored per mille of the canvas; turn them back into pixel boxes.
+            let found: Vec<[f32; 4]> = elements(&recipe, l)
+                .into_iter()
+                .filter(|e| e.filled)
+                .map(|e| {
+                    let xs = e.points.iter().map(|p| p[0] * l.width as f32 / 1000.);
+                    let ys = e.points.iter().map(|p| p[1] * l.height as f32 / 1000.);
+                    let (x0, x1) = (xs.clone().fold(f32::MAX, f32::min), xs.fold(f32::MIN, f32::max));
+                    let (y0, y1) = (ys.clone().fold(f32::MAX, f32::min), ys.fold(f32::MIN, f32::max));
+                    [x0, y0, x1 - x0, y1 - y0]
+                })
+                .collect();
+            (l, found)
+        };
+        // A square canvas around a landscape photo: holes stay next to the photo.
+        let (l, found) = holes(900, 600, Some(crate::model::Ratio { width: 1., height: 1. }), 18.);
+        assert!(found.len() >= 12);
+        for [_, y, width, height] in &found {
+            let centre = y + height / 2.;
+            let gap = (l.y as f32 - centre).max(centre - (l.y + l.photo_height) as f32);
+            assert!(gap > 0. && gap < 600. * 0.14, "hole {gap}px from the photo");
+            assert!(width > height, "landscape strip holes run horizontally");
+        }
+        // Portrait photos put the rails at the sides.
+        let (l, found) = holes(600, 900, None, 18.);
+        assert!(!found.is_empty());
+        assert!(found.iter().all(|[x, _, width, _]| x + width <= l.x as f32 + 0.5 || *x >= (l.x + l.photo_width) as f32 - 0.5));
+        assert!(found.iter().all(|[_, _, width, height]| height > width));
+        // Too thin to read: no specks.
+        assert!(holes(900, 600, None, 4.).1.is_empty());
+    }
     #[test]
     fn all_compositions_reflow_and_keep_photos_intact_with_roi_parity() {
         for id in SPECS.iter().map(|s| s.0) {
