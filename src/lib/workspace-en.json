@@ -79,5 +79,7 @@
   "平移画面": "Pan",
   "打开这张速查表": "Open this sheet",
   "点击": "Click",
-  "关闭快捷键速查": "Close shortcuts"
+  "关闭快捷键速查": "Close shortcuts",
+  "模型": "Models",
+  "连接 ChatGPT 或自己的模型，用于 AI 艺术边框": "Connect ChatGPT or your own model for AI art frames"
 }

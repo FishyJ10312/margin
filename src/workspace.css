@@ -64,8 +64,8 @@ html, body { background: var(--ws-bg); }
 :root .ws.gallery-shell .header-actions .icon-button:disabled { opacity: .38; }
 :root .ws.gallery-shell .header-actions .agent-connected { color: var(--accent); }
 .header-divider { inline-size: 1px; block-size: 18px; margin-inline: 6px; background: var(--ws-line-2); }
-:root .ws.gallery-shell .import-button { block-size: 32px; padding: 0 11px; border: 0; border-radius: 7px; background: transparent; color: var(--ws-muted); font-size: 12.5px; gap: 7px; }
-:root .ws.gallery-shell .import-button:hover:not(:disabled) { background: var(--ws-raised); color: var(--ws-text); }
+:root .ws.gallery-shell .import-button, :root .ws.gallery-shell .header-labelled { block-size: 32px; padding: 0 11px; border: 0; border-radius: 7px; background: transparent; color: var(--ws-muted); font-size: 12.5px; gap: 7px; }
+:root .ws.gallery-shell .import-button:hover:not(:disabled), :root .ws.gallery-shell .header-labelled:hover:not(:disabled) { background: var(--ws-raised); color: var(--ws-text); }
 :root .ws.gallery-shell .language-picker { position: relative; display: flex; align-items: center; }
 :root .ws.gallery-shell .language-picker > svg { position: absolute; inset-inline-start: 8px; color: var(--ws-muted); pointer-events: none; }
 :root .ws.gallery-shell .language-picker select { min-inline-size: 0; max-inline-size: none; inline-size: auto; block-size: 32px; padding: 0 8px 0 30px; border: 0; border-radius: 7px; background: transparent; color: var(--ws-muted); font-size: 12px; appearance: none; -webkit-appearance: none; cursor: pointer; }
@@ -217,7 +217,7 @@ html, body { background: var(--ws-bg); }
 }
 @media (max-width: 960px) {
   :root .ws.gallery-shell .app-header .file-heading { display: none; }
-  :root .ws.gallery-shell .library-tools .text-button span, :root .ws.gallery-shell .import-button { font-size: 0; gap: 0; }
+  :root .ws.gallery-shell .library-tools .text-button span, :root .ws.gallery-shell .import-button, :root .ws.gallery-shell .header-labelled { font-size: 0; gap: 0; }
   :root .ws.gallery-shell .import-button svg { margin: 0; }
 }
 @media (max-height: 700px) {

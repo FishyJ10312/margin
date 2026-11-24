@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {patchAgentSettings,absoluteLocalPath,catalogIds} from '../src/lib/agent-settings.ts';
+import {patchAgentSettings,explicitAgentEdit,absoluteLocalPath,catalogIds} from '../src/lib/agent-settings.ts';
 import {defaultSettings} from '../src/lib/types.ts';
 
 test('Agent settings patch preserves unrelated fields and resolves a selected Chinese font',()=>{
@@ -21,4 +21,14 @@ test('Photo selection fails closed on stale IDs and preserves catalog order',()=
   assert.deepEqual(catalogIds(['c','a'],['a','b','c']),['a','c']);assert.throws(()=>catalogIds(['gone'],['a','b']));
   for(const path of ['/fixture-data/photo.png','C:\\Photos\\one.jpg','\\\\server\\photos\\one.jpg'])assert.equal(absoluteLocalPath(path),path);
   for(const path of ['relative.png','https://example.invalid/photo.png','file:///fixture-data/photo.png','/bad\0path'])assert.throws(()=>absoluteLocalPath(path));
+});
+
+test('Agent can switch the border fill to a blurred photo; a partial patch on legacy settings starts from the solid default',()=>{
+  const legacy=structuredClone(defaultSettings) as Partial<typeof defaultSettings>;delete legacy.background;
+  const fromLegacy=patchAgentSettings(legacy as typeof defaultSettings,{background:{blur:0.2}});
+  assert.deepEqual(fromLegacy.background,{kind:'color',blur:0.2,dim:0.15});
+  const blurred=patchAgentSettings(defaultSettings,{background:{kind:'blur',dim:0.3}});
+  assert.deepEqual(blurred.background,{kind:'blur',blur:0.6,dim:0.3});
+  assert.deepEqual(explicitAgentEdit({background:{kind:'blur'}},blurred).background,blurred.background);
+  assert.throws(()=>patchAgentSettings(defaultSettings,{background:{kind:'blur',script:'x'}}));
 });

@@ -1,4 +1,6 @@
-import {defaultBackground,type RenderSettings,type FontOption} from './types';
+import type {FrameBackground,RenderSettings,FontOption} from './types';
+// Kept local (not imported) so this module stays type-only at runtime; mirrors types.ts.
+const defaultBackground:FrameBackground={kind:'color',blur:0.6,dim:0.15};
 import type {ExplicitSettingsEdit} from './photo-settings';
 export interface AgentStatus {enabled:boolean;allowWrites:boolean;endpoint:string|null;toolCount:number;activeRequests:number;lastTool:string|null;clientJson:string;codexToml:string}
 export interface AgentCommand {requestId:string;name:string;arguments:Record<string,unknown>}

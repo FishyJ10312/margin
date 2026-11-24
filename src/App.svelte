@@ -1477,7 +1477,7 @@
         {importing ? $t("正在导入") : $t("导入")}
       </button>
       <button type="button" class:agent-connected={agentConnected} class="icon-button agent-connect-trigger" aria-label={$t('Agent 连接')} title={$t('Agent 连接')} aria-expanded={agentOpen} disabled={!desktop} on:click={()=>agentOpen=true}><Plug size={16}/></button>
-      <button type="button" class="icon-button model-config-trigger" aria-label={$t('模型配置')} title={$t('模型配置')} disabled={!desktop} on:click={()=>configureModels()}><SlidersHorizontal size={16}/></button>
+      <button type="button" class="text-button header-labelled model-config-trigger" title={$t('连接 ChatGPT 或自己的模型，用于 AI 艺术边框')} disabled={!desktop} on:click={()=>configureModels()}><Sparkles size={15}/><span>{$t('模型')}</span></button>
       <div class="language-picker theme-picker" title={$t('界面主题')}>
         <SunMoon size={16} aria-hidden="true" />
         <select class="theme-select" aria-label={$t('界面主题')} bind:value={$theme}>
