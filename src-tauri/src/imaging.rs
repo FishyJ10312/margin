@@ -2096,6 +2096,21 @@ mod template_qa {
     }
 
     /// Photo sizes are 900/600/720 px divided by `div`.
+    /// The board can use a real picture (MARGIN_BOARD_PHOTO), cover-cropped
+    /// to each case; tests always use the synthetic photo.
+    fn sample_photo(w: u32, h: u32) -> RgbaImage {
+        match std::env::var("MARGIN_BOARD_PHOTO") {
+            Ok(path) if !path.is_empty() => {
+                let img = image::open(path).unwrap().to_rgba8();
+                let f = (w as f32 / img.width() as f32).max(h as f32 / img.height() as f32);
+                let (rw, rh) = ((img.width() as f32 * f).ceil() as u32, (img.height() as f32 * f).ceil() as u32);
+                let scaled = imageops::resize(&img, rw.max(w), rh.max(h), imageops::FilterType::Triangle);
+                imageops::crop_imm(&scaled, (scaled.width() - w) / 2, (scaled.height() - h) / 2, w, h).to_image()
+            }
+            _ => photo(w, h),
+        }
+    }
+
     fn cases(div: u32) -> Vec<(&'static str, u32, u32, Option<Ratio>)> {
         let (a, b, c) = (900 / div, 600 / div, 720 / div);
         vec![
@@ -2117,7 +2132,7 @@ mod template_qa {
             s.border_percent = b;
         }
         validate_settings(&s).unwrap();
-        let source = photo(w, h);
+        let source = sample_photo(w, h);
         let l = layout::calculate(w, h, &s).unwrap();
         (compose(&source, &s, l, None, None, l).unwrap(), l, source)
     }
@@ -2155,7 +2170,12 @@ mod template_qa {
         let dir = std::path::PathBuf::from(std::env::var("MARGIN_BOARD_DIR").expect("set MARGIN_BOARD_DIR"));
         std::fs::create_dir_all(&dir).unwrap();
         let cell = 300u32;
+        // MARGIN_BOARD_IDS=a,b limits the board to some templates.
+        let only = std::env::var("MARGIN_BOARD_IDS").unwrap_or_default();
         for frame in crate::designs::library().unwrap() {
+            if !only.is_empty() && !only.split(',').any(|id| id == frame.id) {
+                continue;
+            }
             let cases = cases(1);
             let mut board = RgbImage::from_pixel(cell * cases.len() as u32 + 10 * (cases.len() as u32 + 1), cell * 2 + 30, Rgb([40, 40, 40]));
             for (row, border) in [None, Some(4.)].into_iter().enumerate() {

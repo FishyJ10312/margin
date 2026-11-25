@@ -98,7 +98,7 @@
      <div class="style-colors"><label for="style-base">{$t('底色')}</label><input id="style-base" type="color" bind:value={candidate.frameColor}/><input aria-label={$t('边框颜色')} class="hex-input" bind:value={candidate.frameColor} maxlength="7" pattern="#[0-9a-fA-F]{6}"/></div>
      {#if candidate.artwork?.design}
       {#if candidate.artwork.design.film}
-       {#if !['scan-instant','scan-carrier'].includes(candidate.artwork.design.id)}<label class="layout-check"><input type="checkbox" bind:checked={candidate.artwork.design.film.labels}/>{$t('片边标记')}</label>{/if}
+       {#if !['scan-instant','scan-carrier','scan-sheet','scan-peel'].includes(candidate.artwork.design.id)}<label class="layout-check"><input type="checkbox" bind:checked={candidate.artwork.design.film.labels}/>{$t('片边标记')}</label>{/if}
        <label class="field-label" for="film-texture">{$t('扫描颗粒')} · {Math.round(candidate.artwork.design.film.texture*100)}%</label><input id="film-texture" type="range" min="0" max="1" step="0.05" bind:value={candidate.artwork.design.film.texture}/>
       {/if}
       <div class="style-colors"><span>{$t('图案配色')}</span>{#each candidate.artwork.design.colors as color,i}<input type="color" aria-label={$t('样式颜色 {0}',{0:i+1})} value={color} on:input={e=>{if(candidate?.artwork?.design)candidate.artwork.design.colors[i]=e.currentTarget.value;}}/>{/each}</div>

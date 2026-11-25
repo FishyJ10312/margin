@@ -30,7 +30,7 @@ pub struct BuiltinFrame {
     pub settings: RenderSettings,
     pub thumbnail: String,
 }
-const SPECS: [(&str, &str, &str, &str, &str, &str, [&str; 3]); 34] = [
+const SPECS: [(&str, &str, &str, &str, &str, &str, [&str; 3]); 39] = [
     (
         "gallery",
         "摄影画廊",
@@ -203,6 +203,51 @@ const SPECS: [(&str, &str, &str, &str, &str, &str, [&str; 3]); 34] = [
         ["#897E69", "#BAB09A", "#171A17"],
     ),
     (
+        "scan-e6",
+        "反转片透光扫描",
+        "Backlit Slide Strip",
+        "film",
+        "整条反转片放在灯箱上：黑色片基、透光的齿孔、相邻画格与淡黄片边字。",
+        "#F1EFE9",
+        ["#D9C98F", "#FBFAF5", "#070707"],
+    ),
+    (
+        "scan-c41",
+        "彩负橙色片基",
+        "Orange-Mask Negative Strip",
+        "film",
+        "未反相的彩负片条：橙色片基、透光齿孔、DX 条码与带箭头的片号。",
+        "#F2EFE8",
+        ["#3A1C0C", "#FBF8F1", "#B9682C"],
+    ),
+    (
+        "scan-bw-strip",
+        "黑白片条接片",
+        "B/W Strip Contact",
+        "film",
+        "黑白负片反相后的片条：深色片基与齿孔、浅灰片号和条码，四周是暗房黑。",
+        "#020202",
+        ["#B9B6AE", "#040404", "#171716"],
+    ),
+    (
+        "scan-sheet",
+        "4×5 页片",
+        "4x5 Sheet Film",
+        "film",
+        "大画幅页片的宽黑边、圆角与右上角的识别缺口，放在明亮的看片台上。",
+        "#ECEAE4",
+        ["#3A3936", "#ECEAE4", "#0B0B0B"],
+    ),
+    (
+        "scan-peel",
+        "撕拉片药边",
+        "Peel-Apart Instant",
+        "film",
+        "撕开后的即显相纸：深色药液边不规则地铺开，底边更厚，顶边留下梳状拖痕。",
+        "#EEE9DD",
+        ["#6B5541", "#EEE9DD", "#1A1613"],
+    ),
+    (
         "color-band",
         "现代色带",
         "Modern Color Bands",
@@ -365,7 +410,9 @@ pub fn settings(id: &str) -> Option<RenderSettings> {
     let s = SPECS.iter().find(|s| s.0 == id)?;
     let mut v = RenderSettings::default();
     v.border_percent = match id {
-        "scan-65mm" | "scan-carrier" => 15.,
+        "scan-65mm" | "scan-carrier" | "scan-sheet" => 15.,
+        "scan-e6" | "scan-c41" | "scan-bw-strip" => 18.,
+        "scan-peel" => 14.,
         "scan-half" | "scan-super16" => 13.,
         id if crate::film::is_scan(id) => 12.,
         _ => 18.,
