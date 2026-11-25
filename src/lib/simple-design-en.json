@@ -53,5 +53,10 @@
   "预览未完成": "Preview unavailable",
   "重试本机预览（不再次生图）": "Retry local preview (no new image request)",
   "本机预览已取消，生成结果仍保留，可直接重试预览。": "Local preview was canceled. Your generated result is retained; retry the preview without generating again.",
-  "放弃本次结果，开启新一轮": "Discard result and start a new round"
+  "放弃本次结果，开启新一轮": "Discard result and start a new round",
+  "AI 绘制材质 · 生图": "AI-painted material · Image generation",
+  "还没有连接模型": "No model connected yet",
+  "上面的风格可以直接用。想让 AI 帮你挑选、配标题，用 ChatGPT 账号登录一次即可，无需 API Key。": "You can use the styles above right away. To let AI choose and title them, sign in once with your ChatGPT account. No API key needed.",
+  "连接 ChatGPT": "Connect ChatGPT",
+  "打开模型配置": "Open model settings"
 }
