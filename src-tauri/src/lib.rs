@@ -7,6 +7,7 @@ static IMAGE_ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 mod app_models;
 pub mod art_ai;
 pub mod art_direction;
+pub mod art_styles;
 pub mod artwork;
 pub mod backdrop;
 pub mod camera_info;

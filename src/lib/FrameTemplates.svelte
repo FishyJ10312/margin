@@ -24,14 +24,16 @@
  let previewData='',previewError='',previewPending=false,compare=false,alive=true,ready=false;
  let version=0,running=false,timer:ReturnType<typeof setTimeout>|undefined;
  let queued:{version:number;photoId:string;settings:RenderSettings}|null=null;
- const categories=[['all','全部'],['film','胶片'],['photo','摄影装帧'],['graphic','平面设计'],['lines','线条'],['botanical','植物'],['geometry','几何'],['illustration','插画']];
- $: visible=builtins.filter(v=>category==='all'||v.category===category);
+ const categories=[['all','全部'],['art','艺术'],['film','胶片'],['photo','摄影装帧'],['graphic','平面设计'],['lines','线条'],['botanical','植物'],['geometry','几何'],['illustration','插画'],['more','更多']];
+ // Pattern-led templates live under "more" and stay out of "all".
+ const inCategory=(v:BuiltinFrame,value:string)=>value==='all'?v.category!=='more':v.category===value;
+ $: visible=builtins.filter(v=>inCategory(v,category));
  $: filmLayout=!!candidate?.artwork?.design?.film;
  $: serialized=candidate?JSON.stringify(candidate):'';
  $: if(ready&&serialized)schedule(photo?.id||'',serialized);
  onMount(()=>{dialog.showModal();if(draft)tab='mine';void load();});
  onDestroy(()=>{alive=false;version++;queued=null;clearTimeout(timer);});
- async function load(){fetching=true;try{const [catalog,personal]=await Promise.all([invoke<BuiltinFrame[]>('list_builtin_frames'),templates.length?invoke<Record<string,string>>('get_frame_template_previews'):Promise.resolve({})]);if(!alive)return;builtins=catalog;savedPreviews=personal||{};if(chosen&&savedPreviews[chosen.id])chosen={...chosen,thumbnail:savedPreviews[chosen.id]};if(!chosen&&draft)choose({id:'draft',name:initialName||$t('待保存方案'),description:'',settings:draft,thumbnail:''});else if(!chosen&&builtins.length)pickBuiltin(builtins.find(v=>category==='all'||v.category===category)||builtins[0]);}catch(e){problem=String(e);}finally{if(alive){fetching=false;ready=true;}}}
+ async function load(){fetching=true;try{const [catalog,personal]=await Promise.all([invoke<BuiltinFrame[]>('list_builtin_frames'),templates.length?invoke<Record<string,string>>('get_frame_template_previews'):Promise.resolve({})]);if(!alive)return;builtins=catalog;savedPreviews=personal||{};if(chosen&&savedPreviews[chosen.id])chosen={...chosen,thumbnail:savedPreviews[chosen.id]};if(!chosen&&draft)choose({id:'draft',name:initialName||$t('待保存方案'),description:'',settings:draft,thumbnail:''});else if(!chosen&&builtins.length)pickBuiltin(builtins.find(v=>inCategory(v,category))||builtins[0]);}catch(e){problem=String(e);}finally{if(alive){fetching=false;ready=true;}}}
  function templateLayout(style: RenderSettings) {
   const padding = style.artwork?.design?.film ? Math.max(currentSettings.borderPercent, style.borderPercent) : currentSettings.borderPercent;
   return {
@@ -46,9 +48,9 @@
   candidate = { ...clone(item.settings), ...templateLayout(item.settings), watermark: clone(currentSettings.watermark), export: clone(currentSettings.export) };
  }
  function pickBuiltin(v:BuiltinFrame){choose({id:v.id,name:$language==='en'?v.englishName:v.name,description:$t(v.description),settings:v.settings,thumbnail:v.thumbnail});}
- function setCategory(value:string){category=value;const first=builtins.find(v=>value==='all'||v.category===value);if(first)pickBuiltin(first);}
+ function setCategory(value:string){category=value;const first=builtins.find(v=>inCategory(v,value));if(first)pickBuiltin(first);}
  function pickSaved(item:FrameTemplate){choose({...item,thumbnail:savedPreviews[item.id]||item.thumbnail,description:''});}
- function setTab(value:string){tab=value;if(value==='mine'){if(draft)choose({id:'draft',name:initialName||$t('待保存方案'),description:'',settings:draft,thumbnail:''});else if(templates[0])pickSaved(templates[0]);}else{const first=builtins.find(v=>category==='all'||v.category===category);if(first)pickBuiltin(first);}}
+ function setTab(value:string){tab=value;if(value==='mine'){if(draft)choose({id:'draft',name:initialName||$t('待保存方案'),description:'',settings:draft,thumbnail:''});else if(templates[0])pickSaved(templates[0]);}else{const first=builtins.find(v=>inCategory(v,category));if(first)pickBuiltin(first);}}
  function layoutChoice() {
   if (candidate && chosen) candidate = { ...candidate, ...templateLayout(chosen.settings) };
  }

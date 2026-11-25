@@ -360,6 +360,9 @@
   let sessionApiKey = '',sessionApiOrigin='';
   let sessionImageApiKey='',sessionImageApiOrigin='';
   let previousArt: SettingsEdit | null = null;
+  // Dot, stripe and wave patterns are folded away; paper and linen lead.
+  const patternMotifs:FrameDecoration['kind'][]=['dots','lines','waves','corners'];
+  let showPatternMotifs=false;
   const motifs: {kind:FrameDecoration['kind'];name:string}[]=[{kind:'none',name:'纯色'},{kind:'paper',name:'纸感'},{kind:'linen',name:'亚麻'},{kind:'dots',name:'点阵'},{kind:'lines',name:'细条纹'},{kind:'waves',name:'柔波纹'},{kind:'corners',name:'角标'}];
   function applyArt(suggestion:FrameSuggestion) {
     const next={...settings,frameColor:suggestion.frameColor,borderPercent:suggestion.borderPercent,decoration:clone(suggestion.decoration),artwork:clone(suggestion.artwork)};
@@ -1635,7 +1638,7 @@
         <details class="extra-colors"><summary>{$t('更多颜色')}</summary><div class="color-palette" role="group" aria-label={$t('更多颜色')}>{#each palette.slice(8) as [color,name]}<button style:background={color} class:active={settings.frameColor.toUpperCase()===color} class="palette-swatch" aria-label={`${$t(name)} ${color}`} aria-pressed={settings.frameColor.toUpperCase()===color} title={$t(name)} on:click={()=>setFrameColor(color)}></button>{/each}</div></details>
         {#if frameHexError}<p class="field-error">{$t(frameHexError)}</p>{/if}
         <details class="advanced-watermark motif-details"><summary><ChevronDown size={14} />{$t("纸张纹理")}</summary>
-          <div class="motif-grid" role="group" aria-label={$t("边框花纹")}>{#each motifs as motif}<button class:chosen={settings.decoration.kind===motif.kind} aria-pressed={settings.decoration.kind===motif.kind} on:click={()=>settings.decoration.kind=motif.kind}><PatternSwatch decoration={{...settings.decoration,kind:motif.kind}} background={settings.frameColor} /><span>{$t(motif.name)}</span></button>{/each}</div>
+          <div class="motif-grid" role="group" aria-label={$t("边框花纹")}>{#each motifs.filter(m=>showPatternMotifs||!patternMotifs.includes(m.kind)||settings.decoration.kind===m.kind) as motif}<button class:chosen={settings.decoration.kind===motif.kind} aria-pressed={settings.decoration.kind===motif.kind} on:click={()=>settings.decoration.kind=motif.kind}><PatternSwatch decoration={{...settings.decoration,kind:motif.kind}} background={settings.frameColor} /><span>{$t(motif.name)}</span></button>{/each}</div>{#if !showPatternMotifs}<button type="button" class="text-button" on:click={()=>showPatternMotifs=true}>{$t('更多花纹')}</button>{/if}
           {#if settings.decoration.kind!=='none'}
             <div class="field-title"><label class="field-label" for="motif-opacity">{$t("花纹强度")}</label><output>{Math.round(settings.decoration.opacity*100)}%</output></div><input id="motif-opacity" type="range" min="0" max="0.3" step="0.01" bind:value={settings.decoration.opacity} />
             <div class="field-title"><label class="field-label" for="motif-scale">{$t("花纹大小")}</label><output>{settings.decoration.scale.toFixed(1)}×</output></div><input id="motif-scale" type="range" min="0.5" max="3" step="0.1" bind:value={settings.decoration.scale} />
