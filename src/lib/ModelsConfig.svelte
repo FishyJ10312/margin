@@ -63,7 +63,7 @@
   <nav aria-label={$t('模型服务')}>
    <button type="button" class:active={pane==='chatgpt'} aria-pressed={pane==='chatgpt'} disabled={busy||saving} on:click={()=>select('chatgpt')}><strong>ChatGPT</strong><span>{$t('官网登录 · 无需 API Key')}</span></button>
    <button type="button" class:active={pane==='image'} aria-pressed={pane==='image'} disabled={busy||saving} on:click={()=>select('image')}><strong>{$t('图像生成')}</strong><span>{$t('Codex 或图像 API')}</span></button>
-   <details class="other-connections"><summary>{$t('其他连接方式')}</summary>
+   <details class="other-connections" open={pane==='codex'||pane==='api'||pane.startsWith('pi:')}><summary>{$t('其他连接方式')}</summary>
     {#each piProviders.filter(p=>p.id!=='openai') as provider}<button type="button" class:active={pane==='pi:'+provider.id} aria-pressed={pane==='pi:'+provider.id} disabled={busy||saving} on:click={()=>select('pi:'+provider.id)}><strong>{provider.name}</strong><span>{$t(provider.billing)}</span></button>{/each}
     <button type="button" class:active={pane==='codex'} aria-pressed={pane==='codex'} disabled={busy||saving} on:click={()=>select('codex')}><strong>Codex</strong><span>{$t('使用本机登录')}</span></button>
     <button type="button" class:active={pane==='api'} aria-pressed={pane==='api'} disabled={busy||saving} on:click={()=>select('api')}><strong>{$t('兼容视觉 API')}</strong><span>{$t('自己的 API Key')}</span></button>

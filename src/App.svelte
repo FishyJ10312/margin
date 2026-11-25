@@ -7,9 +7,13 @@
   import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
   import { open } from '@tauri-apps/plugin-dialog';
   import {
-    ImagePlus, Plus, Download, FolderOpen, ArrowLeftRight, X, Check,
+    ImagePlus, Plus, Download, Keyboard, FolderOpen, ArrowLeftRight, X, Check,
     LoaderCircle, AlertCircle, CheckCircle2, Bookmark, Trash2, RotateCcw, RotateCw, Plug,
-    Image as ImageIcon, Type, ChevronDown, FileImage, List, Pipette, WandSparkles, SlidersHorizontal, Languages, Aperture, SunMoon } from '@lucide/svelte';
+    Image as ImageIcon, Type, ChevronDown, FileImage, List, Pipette, WandSparkles, SlidersHorizontal, Languages, Aperture, SunMoon,
+    Undo2, Redo2, LayoutGrid, Square, Copy, ClipboardPaste, Columns2, ChevronRight, Sparkles } from '@lucide/svelte';
+  import OverviewGrid from './lib/OverviewGrid.svelte';
+  import ShortcutSheet from './lib/ShortcutSheet.svelte';
+  import {photoPalette} from './lib/photo-palette';
   import ModelPanel from './lib/ModelPanel.svelte';
   import ModelsConfig from './lib/ModelsConfig.svelte';
   import PatternSwatch from './lib/PatternSwatch.svelte';
@@ -30,7 +34,7 @@
     defaultSettings,
     type AppSnapshot, type BatchSnapshot, type ImportResult, type Photo,
     type Preset, type PreviewResult, type RenderSettings, type SettingsCommit, type WatermarkKind,
-    type WatermarkPosition, type WatermarkRegion, type FontOption, type FrameSuggestion, type FrameDecoration, type FrameTemplate, type BuiltinFrame, defaultCameraTemplate, type CameraInfo } from './lib/types';
+    type WatermarkPosition, type WatermarkRegion, type FrameBackground, defaultBackground, type FontOption, type FrameSuggestion, type FrameDecoration, type FrameTemplate, type BuiltinFrame, defaultCameraTemplate, type CameraInfo } from './lib/types';
 
   const desktop = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
   const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
@@ -52,7 +56,7 @@
   async function saveFrameTemplate(name:string,style:RenderSettings){const saved=await invoke<FrameTemplate>('save_frame_template',{name,settings:style});frameTemplates=[...frameTemplates,saved];}
   async function deleteFrameTemplate(id:string){await invoke('delete_frame_template',{id});frameTemplates=frameTemplates.filter(t=>t.id!==id);}
   function applyFrameTemplate(style:RenderSettings, keepLayout=false, minimumPadding=0){
-    const next={...settings,ratio:clone(style.ratio),borderPercent:style.borderPercent,frameColor:style.frameColor,decoration:clone(style.decoration),artwork:style.artwork?clone(style.artwork):null};
+    const next={...settings,ratio:clone(style.ratio),borderPercent:style.borderPercent,frameColor:style.frameColor,decoration:clone(style.decoration),background:clone(style.background??defaultBackground),artwork:style.artwork?clone(style.artwork):null};
     performFrameEdit(next,frameStyleEdit(style,keepLayout),{keepLayout,minimumPadding});
     templatesOpen=false;modelOpen=false;
   }
@@ -163,6 +167,53 @@
 
   function selectAllPhotos(){stageSettings(settings);photoSelection=allPhotoSelection(photos.map(photo=>photo.id),photoSelection);}
   function clearSelectedPhotos(){stageSettings(settings);photoSelection=clearPhotoSelection(photoSelection);}
+
+  // Workspace view: one photo at a time, or every framed photo at a glance.
+  let workspaceView:'single'|'overview'='single';
+  function openSingle(id:string){if(id!==selectedId)selectPhoto(id);workspaceView='single';}
+
+  // Copy the active photo's frame and watermark, then paste them onto the
+  // selection as independent settings. Export options stay shared.
+  let copiedSettings:RenderSettings|null=null,copiedFrom='';
+  function copySettings(){
+    if(!selectedPhoto||scopeBusy)return;
+    stageSettings(settings);
+    copiedSettings=clone(actualPhotoSettings(settings,sharedSettings,selectedPhoto.settings,editSelected));
+    copiedFrom=selectedPhoto.name;
+  }
+  async function pasteSettings(){
+    if(!copiedSettings||scopeBusy||isRunning||!desktop)return;
+    const ids=new Set(scopedIds);
+    if(!ids.size)return;
+    stageSettings(settings);
+    scopeBusy=true;
+    try{
+      if(!(await flushSettingsSave()))return;
+      const source={...clone(copiedSettings),export:clone(sharedSettings.export)};
+      const invalid=validateLocal(source);
+      if(invalid)throw new Error(invalid);
+      const updates:PhotoUpdates=Object.fromEntries(photos.filter(photo=>ids.has(photo.id)&&!sameSettings(photo.settings??null,source)).map(photo=>[photo.id,clone(source)]));
+      if(!Object.keys(updates).length)return;
+      commitSettingsStep();
+      const previous=captureSettings(new Set(Object.keys(updates)));
+      const receipt=await invoke<SettingsCommit>('set_photo_settings',{updates,shared:null});
+      photos=photos.map(photo=>Object.hasOwn(updates,photo.id)?{...photo,settings:receipt?.updates?.[photo.id]??updates[photo.id]}:photo);
+      settingsUndo=[...settingsUndo.slice(-49),previous];
+      settingsRedo=[];
+      previousArt=null;
+      lastSettingsEditAt=Date.now();
+      loadInspector(photoSelection,true);
+    }catch(error){notices=[...notices,errorMessage(error)];}
+    finally{scopeBusy=false;}
+  }
+
+  // Frame colour suggestions from the active photo's catalogue thumbnail.
+  let photoColors:string[]=[],paletteSource='';
+  $: if((selectedPhoto?.thumbnail??'')!==paletteSource){
+    const source=paletteSource=selectedPhoto?.thumbnail??'';
+    photoColors=[];
+    if(source)photoPalette(source).then(colors=>{if(paletteSource===source)photoColors=colors;}).catch(()=>{});
+  }
   let photoActions:PhotoLibraryActions;
   let batch: BatchSnapshot | null = null;
   let initialized = false;
@@ -246,6 +297,7 @@
     frameColor: quickStyles[trialIndex].frameColor,
     borderPercent: trialIndex === 0 ? settings.borderPercent : Math.max(settings.borderPercent, quickStyles[trialIndex].borderPercent),
     decoration: quickStyles[trialIndex].decoration,
+    background: clone(quickStyles[trialIndex].background ?? defaultBackground),
     artwork: quickStyles[trialIndex].artwork,
   } : null;
   $: effectiveSettings = actualPhotoSettings(settings,sharedSettings,selectedPhoto?.settings,editSelected);
@@ -398,7 +450,10 @@
   let settingsUndo: SettingsEdit[] = [], settingsRedo: SettingsEdit[] = [];
   let pendingUndo: SettingsEdit | null = null;
   let settingsStepTimer: ReturnType<typeof setTimeout> | undefined;
-  let lastSettingsEditAt = 0, lastRemovalAt = 0, lastUndoKind: 'settings'|'removal'|null = null;
+  let lastSettingsEditAt = 0, lastRemovalAt = 0, lastOrderAt = 0, lastUndoKind: 'settings'|'removal'|'order'|null = null;
+  let orderUndo:{before:string[];after:string[]}[]=[], orderRedo:{before:string[];after:string[]}[]=[];
+  let shortcutSheet:ShortcutSheet;
+  let photoDrag:{ids:string[];x:number;y:number;pointer:number;active:boolean}|null=null, dropIndex=-1, suppressThumbClick=false;
   $: removalUndo,removalRedo,lastRemovalAt=Date.now();
 
   function captureSettings(ids: Set<string> = new Set()): SettingsEdit {
@@ -476,14 +531,84 @@
   const inLibrary=()=>!!document.activeElement?.closest('.library-footer');
   function undoAny(){
     if(settingsStepTimer)commitSettingsStep();
+    if(orderUndo.length&&lastOrderAt>=lastSettingsEditAt&&lastOrderAt>=lastRemovalAt){lastUndoKind='order';void undoOrder();return;}
     const preferRemoval=inLibrary()&&removalUndo.length>0;
     if(!preferRemoval&&settingsUndo.length&&(!removalUndo.length||lastSettingsEditAt>=lastRemovalAt)){lastUndoKind='settings';undoSettings();}
     else if(removalUndo.length){lastUndoKind='removal';void undoPhotoRemoval();}
   }
   function redoAny(){
+    if(orderRedo.length&&(lastUndoKind==='order'||!settingsRedo.length&&!removalRedo.length)){void redoOrder();return;}
     const preferRemoval=inLibrary()&&removalRedo.length>0;
     if(!preferRemoval&&settingsRedo.length&&(lastUndoKind==='settings'||!removalRedo.length))redoSettings();
     else if(removalRedo.length)void redoPhotoRemoval();
+  }
+
+  /** Keeps every current photo exactly once, in `wanted` order where possible. */
+  function fitOrder(wanted:string[]){
+    const current=photos.map(photo=>photo.id),present=new Set(current),seen=new Set<string>();
+    const kept=wanted.filter(id=>present.has(id)&&!seen.has(id)&&!!seen.add(id));
+    return [...kept,...current.filter(id=>!seen.has(id))];
+  }
+  async function applyOrder(order:string[]):Promise<boolean>{
+    if(!desktop||!initialized||loading||isRunning||starting||importing||undoing||agentBusy||scopeBusy)return false;
+    order=fitOrder(order);
+    if(order.join('\n')===photos.map(photo=>photo.id).join('\n'))return false;
+    undoing=true;undoError='';
+    try{
+      const result=await invoke<{order:string[];catalogRevision:number;photoSelection:PhotoSelection}>('reorder_photos',{order,catalogRevision});
+      const byId=new Map(photos.map(photo=>[photo.id,photo]));
+      photos=result.order.map(id=>byId.get(id)).filter((photo):photo is Photo=>!!photo);
+      catalogRevision=result.catalogRevision;
+      photoSelection=restoredPhotoSelection(result.order,photoSelection);
+      return true;
+    }catch(error){undoError=errorMessage(error);return false;}
+    finally{undoing=false;}
+  }
+  /** Moves `ids` (kept in their current relative order) so they start before index `to` of the current list. */
+  async function movePhotos(ids:string[],to:number){
+    const before=photos.map(photo=>photo.id),moving=new Set(ids);
+    const rest=before.filter(id=>!moving.has(id));
+    const insertAt=before.slice(0,to).filter(id=>!moving.has(id)).length;
+    const after=[...rest.slice(0,insertAt),...before.filter(id=>moving.has(id)),...rest.slice(insertAt)];
+    if(await applyOrder(after)){orderUndo=[...orderUndo.slice(-19),{before,after}];orderRedo=[];lastOrderAt=Date.now();lastUndoKind=null;}
+  }
+  function nudgeSelection(delta:number){
+    const ids=photos.map(photo=>photo.id),chosen=ids.filter(id=>selectedPhotoIds.has(id));
+    if(!chosen.length)return;
+    const first=ids.indexOf(chosen[0]),last=ids.indexOf(chosen[chosen.length-1]);
+    if(delta<0&&first>0)void movePhotos(chosen,first-1);
+    else if(delta>0&&last<ids.length-1)void movePhotos(chosen,last+2);
+  }
+  async function undoOrder(){
+    const entry=orderUndo.at(-1);if(!entry)return;
+    if(await applyOrder(entry.before)){orderUndo=orderUndo.slice(0,-1);orderRedo=[...orderRedo,entry];}
+  }
+  async function redoOrder(){
+    const entry=orderRedo.at(-1);if(!entry)return;
+    if(await applyOrder(entry.after)){orderRedo=orderRedo.slice(0,-1);orderUndo=[...orderUndo,entry];lastOrderAt=Date.now();}
+  }
+  function thumbPointerDown(event:PointerEvent,id:string){
+    if(event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||photos.length<2)return;
+    const ids=selectedPhotoIds.has(id)?photos.map(photo=>photo.id).filter(other=>selectedPhotoIds.has(other)):[id];
+    photoDrag={ids,x:event.clientX,y:event.clientY,pointer:event.pointerId,active:false};
+  }
+  function thumbPointerMove(event:PointerEvent){
+    if(!photoDrag||event.pointerId!==photoDrag.pointer)return;
+    if(!photoDrag.active){
+      if(Math.hypot(event.clientX-photoDrag.x,event.clientY-photoDrag.y)<6)return;
+      if(undoing||isRunning||agentBusy||scopeBusy){photoDrag=null;return;}
+      photoDrag.active=true;
+    }
+    const tiles=[...document.querySelectorAll<HTMLElement>('.filmstrip .thumbnail[data-photo-id]')];
+    let index=tiles.length;
+    for(let i=0;i<tiles.length;i++){const box=tiles[i].getBoundingClientRect();if(event.clientX<box.left+box.width/2){index=i;break;}}
+    dropIndex=index;
+  }
+  function thumbPointerUp(event:PointerEvent){
+    if(!photoDrag||event.pointerId!==photoDrag.pointer)return;
+    const drag=photoDrag;photoDrag=null;
+    if(drag.active&&dropIndex>=0){suppressThumbClick=true;setTimeout(()=>suppressThumbClick=false,0);void movePhotos(drag.ids,dropIndex);}
+    dropIndex=-1;
   }
 
   function syncControls() {
@@ -593,6 +718,8 @@
     if (!/^#[0-9a-f]{6}$/i.test(value.frameColor)) return $t("请输入六位 HEX 边框颜色");
     if (!Number.isFinite(value.borderPercent) || value.borderPercent < 0 || value.borderPercent > 30) return $t("边框比例应在 0% 到 30% 之间");
     if (value.ratio && (!(value.ratio.width > 0) || !(value.ratio.height > 0))) return $t("自定义比例的宽和高必须大于 0");
+    const backdrop = value.background ?? defaultBackground;
+    if (!['color','blur'].includes(backdrop.kind) || !(backdrop.blur >= 0 && backdrop.blur <= 1) || !(backdrop.dim >= 0 && backdrop.dim <= 0.8)) return $t("请检查边框底色设置");
     if (value.watermark.kind !== 'none' && (!Number.isFinite(value.watermark.offsetX) || !Number.isFinite(value.watermark.offsetY))) return $t("请输入有效的水印偏移");
     if (value.watermark.kind === 'text' && !value.watermark.text.trim()) return $t("请输入水印文字");
     if (value.watermark.kind === 'camera' && !value.watermark.cameraTemplate?.trim()) return $t("请填写参数水印的内容");
@@ -951,6 +1078,13 @@
     } else frameHexError = $t("颜色格式如 #FFFFFF");
   }
 
+  function setBackground(patch:Partial<FrameBackground>) {
+    const next={...defaultBackground,...(settings.background??{}),...patch};
+    cancelFrameTrial();
+    settings.background=next;
+    if(editSelected&&selectedIds.length>1)stageSettings(settings,{background:clone(next)});
+  }
+
   function setBorderPercent(value:number) {
     settings.borderPercent=value;
     if(editSelected&&photoSelection.ids.length>1)stageSettings(settings,{borderPercent:value});
@@ -1296,7 +1430,7 @@
   }
 </script>
 
-<svelte:window on:blur={() => comparingOriginal = false} on:keydown={(event) => {
+<svelte:window on:pointermove={thumbPointerMove} on:pointerup={thumbPointerUp} on:pointercancel={()=>{photoDrag=null;dropIndex=-1;}} on:blur={() => comparingOriginal = false} on:keydown={(event) => {
   if (event.key === 'Escape' && (trialIndex >= 0 || comparingOriginal) && !document.querySelector('dialog[open]')) {
     event.preventDefault();
     cancelFrameTrial();
@@ -1305,35 +1439,62 @@
     event.preventDefault();
     void choosePhotos();
   }
+  const typing=event.target instanceof HTMLElement&&!!event.target.closest('input,textarea,select,[contenteditable=true]');
+  if (!agentBusy && !typing && (event.metaKey || event.ctrlKey) && event.shiftKey && !document.querySelector('dialog[open]')) {
+    const key=event.key.toLowerCase();
+    if(key==='c'&&selectedPhoto){event.preventDefault();copySettings();}
+    else if(key==='v'&&copiedSettings){event.preventDefault();void pasteSettings();}
+  }
+  if (event.key === '?' && !typing && !event.metaKey && !event.ctrlKey && !event.altKey && !document.querySelector('dialog[open]')) {
+    event.preventDefault();
+    shortcutSheet.open();
+  }
 }} />
 
-<div class:drop-active={dragActive} class="app-shell gallery-shell">
+<div class:drop-active={dragActive} class="app-shell gallery-shell ws">
   <header class="app-header">
-    <div class="header-leading"><div class="brand"><h1>{brand.name}</h1></div></div>
+    <div class="header-leading">
+      <div class="brand"><h1>{brand.name}</h1></div>
+      {#if photos.length}
+        <div class="view-switch" role="group" aria-label={$t('工作区视图')}>
+          <button type="button" aria-pressed={workspaceView==='single'} on:click={()=>workspaceView='single'}><Square size={13}/>{$t('单张')}</button>
+          <button type="button" class="overview-toggle" aria-pressed={workspaceView==='overview'} on:click={()=>{stageSettings(settings);workspaceView='overview';}}><LayoutGrid size={13}/>{$t('总览')}</button>
+        </div>
+      {/if}
+      {#if workspaceView==='overview'&&photos.length}
+        <div class="file-heading"><span>{$t('全部照片')}</span><span class="source-size">{$t('已选 {0} 张',{0:selectedIds.length})} / {photos.length}</span></div>
+      {:else if selectedPhoto}
+        <div class="file-heading"><span title={selectedPhoto.path}>{selectedPhoto.name}</span><span class="source-size">{selectedPhoto.width} × {selectedPhoto.height}</span></div>
+      {/if}
+    </div>
     <div class="header-actions">
+      <button type="button" class="icon-button header-undo" aria-label={$t('撤销')} title={$t('撤销（⌘ / Ctrl+Z）')} disabled={!desktop||!(removalUndo.length||settingsUndo.length||orderUndo.length||pendingUndo)||undoing||agentBusy||isRunning} on:click={undoAny}><Undo2 size={16}/></button>
+      <button type="button" class="icon-button header-redo" aria-label={$t('重做')} title={$t('重做（⌘ / Ctrl+Shift+Z）')} disabled={!desktop||!(removalRedo.length||settingsRedo.length||orderRedo.length)||undoing||agentBusy||isRunning} on:click={redoAny}><Redo2 size={16}/></button>
+      <span class="header-divider" aria-hidden="true"></span>
+      <button type="button" class="icon-button shortcuts-button" aria-label={$t('键盘快捷键')} title={$t('键盘快捷键（?）')} aria-keyshortcuts="Shift+Slash" on:click={()=>shortcutSheet.open()}><Keyboard size={16}/></button>
       <button class="button quiet compact import-button" on:click={choosePhotos} disabled={!desktop || importing || choosingPhotos || agentBusy || loading || !initialized}>
         {#if importing}<LoaderCircle size={15} class="spin" />{:else}<ImagePlus size={16} />{/if}
-        {importing ? $t("正在导入") : $t("导入照片")}
+        {importing ? $t("正在导入") : $t("导入")}
       </button>
       <button type="button" class:agent-connected={agentConnected} class="icon-button agent-connect-trigger" aria-label={$t('Agent 连接')} title={$t('Agent 连接')} aria-expanded={agentOpen} disabled={!desktop} on:click={()=>agentOpen=true}><Plug size={16}/></button>
-      <button type="button" class="icon-button model-config-trigger" aria-label={$t('模型配置')} title={$t('模型配置')} disabled={!desktop} on:click={()=>configureModels()}><SlidersHorizontal size={16}/></button>
-      <div class="language-picker theme-picker">
+      <button type="button" class="text-button header-labelled model-config-trigger" title={$t('连接 ChatGPT 或自己的模型，用于 AI 艺术边框')} disabled={!desktop} on:click={()=>configureModels()}><Sparkles size={15}/><span>{$t('模型')}</span></button>
+      <div class="language-picker theme-picker" title={$t('界面主题')}>
         <SunMoon size={16} aria-hidden="true" />
         <select class="theme-select" aria-label={$t('界面主题')} bind:value={$theme}>
           <option value="dark" label={$t('深色')}>{$t('深色')}</option>
           <option value="light" label={$t('浅色')}>{$t('浅色')}</option>
           <option value="system" label={$t('自动')}>{$t('跟随系统')}</option>
         </select>
-        <ChevronDown class="language-chevron" size={12} aria-hidden="true" />
       </div>
-      <div class="language-picker">
+      <div class="language-picker" title={$t("界面语言 / Interface language")}>
         <Languages size={16} aria-hidden="true" />
         <select id="interface-language" class="language-select" aria-label={$t("界面语言 / Interface language")} bind:value={$language}>
           <option value="en" lang="en" label="EN">English</option>
           <option value="zh-CN" lang="zh-CN" label="中">简体中文</option>
         </select>
-        <ChevronDown class="language-chevron" size={12} aria-hidden="true" />
       </div>
+      {#if isRunning}<button class="button secondary compact export-primary" disabled={cancelling} on:click={cancelBatch}><X size={15}/>{cancelling?$t('正在停止'):$t('取消导出')}</button>
+      {:else}<button class="button primary compact export-primary export-button" on:click={openExportDialog} disabled={!desktop || !initialized || !selectedIds.length || !!localError || starting || importing || undoing || agentBusy}><Download size={15}/>{$t('导出选中 {0} 张',{0:selectedIds.length})}</button>{/if}
     </div>
   </header>
 
@@ -1359,10 +1520,17 @@
       <div class="viewer">
         {#if loading}
           <div class="empty-state"><LoaderCircle size={25} class="spin" /><p>{$t("正在载入工作区")}</p></div>
+        {:else if workspaceView==='overview'&&photos.length}
+          <OverviewGrid {photos} shared={sharedSettings} selected={selectedPhotoIds} activeId={selectedId??''} onselect={selectPhoto} onopen={openSingle}/>
         {:else if selectedPhoto}
           {#key selectedPhoto.id}
             <PhotoViewport photo={selectedPhoto} preview={comparingOriginal ? null : preview} picking={pickingColor} loading={previewLoading} oncolor={setFrameColor} onclose={closePicker} markBox={watermarkPreviewVisible&&!sharedOverridePreview&&!trialSettings&&!comparingOriginal?markBox:null} onmarkdrag={dragMark}>
-              <svelte:fragment slot="heading"><div class="file-heading"><span title={selectedPhoto.path}>{selectedPhoto.name}</span><span class="source-size">{selectedPhoto.width} × {selectedPhoto.height}</span><button type="button" class="remove-photo" title={$t('从目录中移除照片（Backspace / Delete）')} aria-label={$t(selectedIds.length>1?'移除选中的 {0} 张照片':'移除当前照片',{0:selectedIds.length})} aria-keyshortcuts="Backspace Delete" disabled={isRunning||starting||importing||!selectedIds.length} on:click={()=>photoActions.requestRemoval(selectedIds)}><Trash2 size={15}/><span>{$t(selectedIds.length>1?'移除 {0} 张':'移除照片',{0:selectedIds.length})}</span></button></div></svelte:fragment>
+              <svelte:fragment slot="tools">
+                <button type="button" class="text-button compare-original" aria-pressed={comparingOriginal} title={$t('按住查看未加框的原片')}
+                  on:pointerdown={event => { if (event.button === 0) { event.currentTarget.setPointerCapture(event.pointerId); comparingOriginal = true; } }}
+                  on:pointerup={() => comparingOriginal = false} on:lostpointercapture={() => comparingOriginal = false}
+                  on:keydown={event => compareKey(event, true)} on:keyup={event => compareKey(event, false)} on:blur={() => comparingOriginal = false}><Columns2 size={13}/>{$t('对比原片')}</button>
+              </svelte:fragment>
               {#if watermarkPreviewVisible}
                 <WatermarkDetail photo={selectedPhoto} settings={displayedSettings} overview={preview} hidden={comparingOriginal} collapsed={watermarkPreviewCollapsed} oncollapse={collapseWatermarkPreview} onlimits={(value)=>offsetLimits=sharedOverridePreview||trialSettings?null:value} onbox={(box)=>{if(!markDragStart)markBox=box;}}/>
               {/if}
@@ -1392,19 +1560,19 @@
     </main>
 
     <aside class="settings-panel" aria-label={$t("边框和水印设置")}>
+      <div class="scope-row"><span class="scope-label">{$t('应用到')}</span><div class="settings-scope" role="group" aria-label={$t('设置应用于')}>
+        <button type="button" class:active={!editSelected} aria-pressed={!editSelected} disabled={!selectedPhoto||scopeBusy||isRunning} on:click={() => setSettingsScope(false)}>{$t('共享设置')}</button>
+        <button type="button" class:active={editSelected} aria-pressed={editSelected} disabled={!selectedPhoto||scopeBusy||isRunning} on:click={() => setSettingsScope(true)}>{$t(selectedIds.length>1?'编辑选中 {0} 张':'仅这张',{0:selectedIds.length})}</button>
+      </div></div>
+      {#if sharedOverridePreview}<p class="scope-note" role="status">{$t('当前照片的预览和导出均使用单独设置；共享调整只影响没有单独设置的照片。')}</p>{/if}
+      {#if hasScopedOverrides}<button type="button" class="text-button restore-shared" disabled={scopeBusy||isRunning} on:click={restoreSharedSettings}>{$t('恢复共享设置')}</button>{/if}
       <div class="inspector-tabs" role="tablist" aria-label={$t('边框与水印')}>
         <button type="button" id="inspector-frame" role="tab" aria-controls="frame-panel" aria-selected={inspectorTab==='frame'} tabindex={inspectorTab==='frame'?0:-1} on:click={()=>selectInspector('frame')} on:keydown={inspectorKey}><span class="step-number" aria-hidden="true">01</span>{$t('边框')}</button>
         <button type="button" id="inspector-watermark" role="tab" aria-controls="watermark-panel" aria-selected={inspectorTab==='watermark'} tabindex={inspectorTab==='watermark'?0:-1} on:click={()=>selectInspector('watermark')} on:keydown={inspectorKey}><span class="step-number" aria-hidden="true">02</span>{$t('水印')}</button>
       </div>
-      <div class="settings-scope" role="group" aria-label={$t('设置应用于')}>
-        <button type="button" class:active={!editSelected} aria-pressed={!editSelected} disabled={!selectedPhoto||scopeBusy||isRunning} on:click={() => setSettingsScope(false)}>{$t('共享设置')}</button>
-        <button type="button" class:active={editSelected} aria-pressed={editSelected} disabled={!selectedPhoto||scopeBusy||isRunning} on:click={() => setSettingsScope(true)}>{$t(selectedIds.length>1?'编辑选中 {0} 张':'仅这张',{0:selectedIds.length})}</button>
-      </div>
-      {#if sharedOverridePreview}<p class="scope-note" role="status">{$t('当前照片的预览和导出均使用单独设置；共享调整只影响没有单独设置的照片。')}</p>{/if}
-      {#if hasScopedOverrides}<button type="button" class="text-button restore-shared" disabled={scopeBusy||isRunning} on:click={restoreSharedSettings}>{$t('恢复共享设置')}</button>{/if}
       <div id="frame-panel" inert={scopeBusy} class="setting-section inspector-panel" role="tabpanel" tabindex="0" aria-labelledby="inspector-frame" hidden={inspectorTab!=='frame'}>
         <section class="quick-templates" aria-label={$t('快速试框')}>
-          <div class="quick-templates-heading"><h2>{$t('快速试框')}</h2><button type="button" class="text-button" disabled={!desktop||!initialized||loading||importing||isRunning} on:click={() => { cancelFrameTrial(); openTemplates(); }}>{$t('全部模板')}</button></div>
+          <div class="quick-templates-heading"><h2>{$t('样式')}</h2><button type="button" class="text-button" disabled={!desktop||!initialized||loading||importing||isRunning} on:click={() => { cancelFrameTrial(); openTemplates(); }}>{$t('全部模板')}</button></div>
           <div class="quick-template-grid" role="group" aria-label={$t('快速试框')} bind:this={quickGrid}>
             {#each quickFrames as frame, index}
               <button type="button" aria-pressed={trialIndex === index} tabindex={trialIndex < 0 ? (index === 0 ? 0 : -1) : (trialIndex === index ? 0 : -1)}
@@ -1424,7 +1592,13 @@
               <button type="button" class="button secondary compact apply-trial" disabled={previewLoading||!!previewError} on:click={applyTrial}>{$t('应用边框')}</button>
             </div>
           {/if}
+          <button type="button" class="art-trigger ai-card" disabled={!desktop||!selectedPhoto||importing||isRunning} on:click={()=>{modelMode='design';modelTarget='frame';modelOpen=true;}}>
+            <span class="ai-card-icon" aria-hidden="true"><Sparkles size={15}/></span>
+            <span class="ai-card-text"><strong>{$t('AI 艺术边框')}</strong><small>{$t('按照片生成独一份设计 · 需连接模型')}</small></span>
+            <ChevronRight size={15} aria-hidden="true"/>
+          </button>
         </section>
+        <div class="inspector-group-start" aria-hidden="true"></div>
         <div class="field-title ratio-title"><span class="field-label">{$t('最终比例')}</span><button class="icon-button" disabled={!settings.ratio} on:click={swapRatio} title={$t('交换宽高')} aria-label={$t('交换宽高')}><ArrowLeftRight size={15}/></button></div>
         <div class="ratio-grid" role="group" aria-label={$t('最终比例')}>
           <button type="button" class:active={ratioMode==='auto'} aria-pressed={ratioMode==='auto'} on:click={()=>changeRatio('auto')}>{$t('自动')}</button>
@@ -1435,8 +1609,24 @@
         <div class="field-title"><label class="field-label" for="border-range">{$t("边框比例")}</label><div class="number-with-unit"><input aria-label={$t("边框百分比")} type="number" min="0" max="30" step="0.5" value={settings.borderPercent} on:input={(event)=>setBorderPercent(event.currentTarget.valueAsNumber)} /><span>%</span></div></div>
         <input id="border-range" type="range" min="0" max="30" step="0.5" value={settings.borderPercent} on:input={(event)=>setBorderPercent(event.currentTarget.valueAsNumber)} />
         <p class="field-help">{$t("按照片短边计算最小留白；指定比例时，部分方向会增加留白")}</p>
+        <div class="inspector-group-start" aria-hidden="true"></div>
         <label class="field-label color-label" for="frame-hex">{$t("边框颜色")}</label>
+        <div class="segmented background-kind" role="group" aria-label={$t('边框底色')}>
+          <button type="button" class:active={(settings.background?.kind??'color')==='color'} aria-pressed={(settings.background?.kind??'color')==='color'} on:click={()=>setBackground({kind:'color'})}>{$t('纯色')}</button>
+          <button type="button" class:active={settings.background?.kind==='blur'} aria-pressed={settings.background?.kind==='blur'} on:click={()=>setBackground({kind:'blur'})}>{$t('照片模糊')}</button>
+        </div>
+        {#if settings.background?.kind==='blur'}
+          <div class="field-title"><label class="field-label" for="background-blur">{$t('模糊程度')}</label><output>{Math.round(settings.background.blur*100)}%</output></div>
+          <input id="background-blur" type="range" min="0" max="1" step="0.05" value={settings.background.blur} on:input={e=>setBackground({blur:e.currentTarget.valueAsNumber})}/>
+          <div class="field-title"><label class="field-label" for="background-dim">{$t('叠加边框颜色')}</label><output>{Math.round(settings.background.dim*100)}%</output></div>
+          <input id="background-dim" type="range" min="0" max="0.8" step="0.05" value={settings.background.dim} on:input={e=>setBackground({dim:e.currentTarget.valueAsNumber})}/>
+          <p class="field-help">{$t('用照片自身的模糊版本铺满留白，照片仍完整保留；下面的颜色会按比例叠加在模糊底上。')}</p>
+        {/if}
         <div class="color-palette" role="group" aria-label={$t('边框色盘')}>{#each palette.slice(0,8) as [color,name]}<button style:background={color} class:active={settings.frameColor.toUpperCase()===color} class="palette-swatch" aria-label={`${$t(name)} ${color}`} aria-pressed={settings.frameColor.toUpperCase()===color} title={$t(name)} on:click={()=>setFrameColor(color)}></button>{/each}</div>
+        {#if photoColors.length}
+          <span class="photo-colors-label">{$t('来自这张照片')}</span>
+          <div class="color-palette photo-colors" role="group" aria-label={$t('照片配色建议')}>{#each photoColors as color}<button style:background={color} class:active={settings.frameColor.toUpperCase()===color} class="photo-swatch" aria-label={$t('照片配色 {0}',{0:color})} aria-pressed={settings.frameColor.toUpperCase()===color} title={color} on:click={()=>setFrameColor(color)}></button>{/each}</div>
+        {/if}
         <div class="color-row">
           <input class="color-picker" type="color" aria-label={$t("选择边框颜色")} value={settings.frameColor} on:input={(event) => setFrameColor(event.currentTarget.value)} />
           <input id="frame-hex" class="hex-input" value={frameHex} maxlength="7" on:input={(event) => setFrameColor(event.currentTarget.value)} spellcheck="false" />
@@ -1444,7 +1634,7 @@
         </div>
         <details class="extra-colors"><summary>{$t('更多颜色')}</summary><div class="color-palette" role="group" aria-label={$t('更多颜色')}>{#each palette.slice(8) as [color,name]}<button style:background={color} class:active={settings.frameColor.toUpperCase()===color} class="palette-swatch" aria-label={`${$t(name)} ${color}`} aria-pressed={settings.frameColor.toUpperCase()===color} title={$t(name)} on:click={()=>setFrameColor(color)}></button>{/each}</div></details>
         {#if frameHexError}<p class="field-error">{$t(frameHexError)}</p>{/if}
-        <details class="advanced-watermark motif-details"><summary><ChevronDown size={14} />{$t("简约花纹")}</summary>
+        <details class="advanced-watermark motif-details"><summary><ChevronDown size={14} />{$t("纸张纹理")}</summary>
           <div class="motif-grid" role="group" aria-label={$t("边框花纹")}>{#each motifs as motif}<button class:chosen={settings.decoration.kind===motif.kind} aria-pressed={settings.decoration.kind===motif.kind} on:click={()=>settings.decoration.kind=motif.kind}><PatternSwatch decoration={{...settings.decoration,kind:motif.kind}} background={settings.frameColor} /><span>{$t(motif.name)}</span></button>{/each}</div>
           {#if settings.decoration.kind!=='none'}
             <div class="field-title"><label class="field-label" for="motif-opacity">{$t("花纹强度")}</label><output>{Math.round(settings.decoration.opacity*100)}%</output></div><input id="motif-opacity" type="range" min="0" max="0.3" step="0.01" bind:value={settings.decoration.opacity} />
@@ -1476,7 +1666,7 @@
          </details>
          {#if !settings.artwork.design}<button class="text-button" disabled={!selectedPhoto||isRunning||importing} on:click={()=>{modelMode='refine';modelOpen=true;}}><WandSparkles size={12}/>{$t('精修一次')}</button>{/if}
         {/if}
-        <details class="advanced-watermark saved-settings"><summary><ChevronDown size={14}/>{$t('保存与预设')}</summary>
+        <details class="advanced-watermark saved-settings"><summary><ChevronDown size={14}/>{$t('我的样式')}</summary>
           <button class="text-button save-current-frame" disabled={!desktop||!initialized||loading||!!localError} on:click={()=>openTemplates(settings)}><Bookmark size={12}/>{$t('保存当前边框为模板')}</button>
       <div class="preset-row">
         <Bookmark size={15} />
@@ -1543,12 +1733,8 @@
       </div>
 
       <div class="inspector-bottom">
-        {#if isRunning}<button class="button secondary export-primary" disabled={cancelling} on:click={cancelBatch}><X size={16}/>{cancelling?$t('正在停止'):$t('取消导出')}</button>
-        {:else}<button class="button primary export-primary export-button" on:click={openExportDialog} disabled={!desktop || !initialized || !selectedIds.length || !!localError || starting || importing || undoing || agentBusy}><Download size={16}/>{$t('导出选中 {0} 张',{0:selectedIds.length})}</button>{/if}
-        <div class="inspector-bottom-row">
-          <button type="button" class="export-options" on:click={openExportDialog} disabled={!desktop||!initialized||!photos.length||isRunning||starting||importing||undoing} aria-label={$t('导出选项')}>{settings.export.format.toUpperCase()} · {settings.export.format==='jpg'?settings.export.jpegQuality:$t('无损 PNG')} · {settings.export.longEdge?`${settings.export.longEdge} px`:$t('保留原始像素')}<ChevronDown size={12}/></button>
-          <button class="text-button art-trigger" disabled={!desktop||!selectedPhoto||importing||isRunning} on:click={()=>{modelMode='design';modelTarget='frame';modelOpen=true;}}><WandSparkles size={14}/>{$t('艺术边框')}</button>
-        </div>
+        <span class="inspector-bottom-status">{editSelected?$t('单独设置 · {0} 张',{0:frameAffectedCount}):$t('共享设置 · {0} 张',{0:frameAffectedCount})}</span>
+        <button type="button" class="export-options" on:click={openExportDialog} disabled={!desktop||!initialized||!photos.length||isRunning||starting||importing||undoing} aria-label={$t('导出选项')}>{settings.export.format.toUpperCase()} · {settings.export.format==='jpg'?settings.export.jpegQuality:$t('无损 PNG')} · {settings.export.longEdge?`${settings.export.longEdge} px`:$t('保留原始像素')}<ChevronDown size={12}/></button>
       </div>
     </aside>
   </div>
@@ -1556,11 +1742,19 @@
   <footer class="library-footer">
     {#if isRunning && totalCount > 0}<div class="batch-track" role="progressbar" aria-label={$t("批量导出进度")} aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(progress)}><div style:width={`${progress}%`}></div></div>{/if}
     <section class="filmstrip-section" inert={agentBusy} aria-label={$t('已导入的照片')}>
-      <div class="library-summary"><strong>{photos.length} {$t('张照片',{count:photos.length})}{#if photos.length}<span class="selection-count" role="status">{$t('已选 {0} 张',{0:selectedIds.length})}</span>{/if}</strong><span id="photo-selection-hint" title={$t('先单击起点，再按住 Shift 点击终点；⌘ / Ctrl+A 全选，Esc 取消选择')}>{$t(photos.length>1?'Shift 连选 · ⌘ / Ctrl+A 全选 · Esc 取消':'全部照片共用当前设置')}</span></div>
+      <div class="library-bar">
+        <div class="library-summary"><strong>{photos.length} {$t('张照片',{count:photos.length})}{#if photos.length}<span class="selection-count" role="status">{$t('已选 {0} 张',{0:selectedIds.length})}</span>{/if}</strong><span id="photo-selection-hint" title={$t('先单击起点，再按住 Shift 点击终点；⌘ / Ctrl+A 全选，Esc 取消选择')}>{$t(photos.length>1?'Shift 连选 · 拖动排序 · ⌘ / Ctrl+A 全选':'全部照片共用当前设置')}</span></div>
+        {#if photos.length}<div class="library-tools" role="toolbar" aria-label={$t('照片操作')}>
+          <button type="button" class="text-button copy-settings" title={$t('复制当前照片的边框和水印（⌘ / Ctrl+Shift+C）')} disabled={!selectedPhoto||scopeBusy||isRunning||agentBusy} on:click={copySettings}><Copy size={13}/>{$t('复制设置')}</button>
+          <button type="button" class="text-button paste-settings" title={copiedSettings?$t('把「{0}」的设置粘贴到选中的照片（⌘ / Ctrl+Shift+V）',{0:copiedFrom}):$t('先复制一张照片的设置')} disabled={!copiedSettings||!selectedIds.length||scopeBusy||isRunning||agentBusy} on:click={pasteSettings}><ClipboardPaste size={13}/>{$t(selectedIds.length>1?'粘贴到 {0} 张':'粘贴设置',{0:selectedIds.length})}</button>
+          <button type="button" class="text-button remove-photo" title={$t('从目录中移除照片（Backspace / Delete）')} aria-label={$t(selectedIds.length>1?'移除选中的 {0} 张照片':'移除当前照片',{0:selectedIds.length})} aria-keyshortcuts="Backspace Delete" disabled={isRunning||starting||importing||!selectedIds.length} on:click={()=>photoActions.requestRemoval(selectedIds)}><Trash2 size={13}/><span>{$t(selectedIds.length>1?'移除 {0} 张':'移除照片',{0:selectedIds.length})}</span></button>
+          <button type="button" class="text-button clear-photos" aria-label={$t('清空列表')} title={$t('清空列表（原图保留）')} disabled={isRunning||starting||importing||undoing} on:click={()=>photoActions.requestRemoval(photos.map(photo=>photo.id))}>{$t('清空')}</button>
+        </div>{/if}
+      </div>
       <div class="filmstrip" role="group" aria-label={$t('照片选择')} aria-describedby="photo-selection-hint" aria-keyshortcuts="Meta+A Control+A Escape Meta+Z Control+Z Meta+Shift+Z Control+Shift+Z">
-        {#each photos as photo (photo.id)}
+        {#each photos as photo,index (photo.id)}
           {@const job = batch?.items.find((item) => item.photoId === photo.id)}
-          <button class:selected={selectedPhotoIds.has(photo.id)} class:active={photo.id===selectedId} class="thumbnail" data-photo-id={photo.id} on:click={event=>selectPhoto(photo.id,event)} on:contextmenu={event=>photoActions.openPhotoMenu(event,photo.id)} aria-label={$t('预览 {0}',{0:photo.name}) + (photo.settings ? ' · ' + $t('单独设置') : '')} aria-pressed={selectedPhotoIds.has(photo.id)} aria-current={photo.id===selectedId?'true':undefined} aria-haspopup="menu" title={photo.name}>
+          <button class:selected={selectedPhotoIds.has(photo.id)} class:active={photo.id===selectedId} class:drop-before={dropIndex===index} class:drop-after={dropIndex===photos.length&&index===photos.length-1} class:dragging={photoDrag?.active&&photoDrag.ids.includes(photo.id)} class="thumbnail" data-photo-id={photo.id} on:pointerdown={event=>thumbPointerDown(event,photo.id)} on:click={event=>{if(!suppressThumbClick)selectPhoto(photo.id,event);}} on:contextmenu={event=>photoActions.openPhotoMenu(event,photo.id)} aria-label={$t('预览 {0}',{0:photo.name}) + (photo.settings ? ' · ' + $t('单独设置') : '')} aria-pressed={selectedPhotoIds.has(photo.id)} aria-current={photo.id===selectedId?'true':undefined} aria-haspopup="menu" title={photo.name}>
             {#if photo.thumbnail}<img src={photo.thumbnail} alt="" draggable="false"/>{:else}<FileImage size={22}/>{/if}{#if photo.settings}<span class="own-badge" title={$t('单独设置')} aria-hidden="true"><SlidersHorizontal size={11}/></span>{/if}
             {#if job?.status==='completed'}<span class="thumbnail-status success"><Check size={10} strokeWidth={3}/></span>{:else if job?.status==='failed'}<span class="thumbnail-status failed"><AlertCircle size={11}/></span>{:else if job?.status==='running'}<span class="thumbnail-status"><LoaderCircle size={11} class="spin"/></span>{/if}
           </button>
@@ -1572,7 +1766,6 @@
         <button class="batch-summary text-button" on:click={() => jobDialog?.showModal()} title={$t("查看处理记录")}><List size={14} />{#if isRunning}<span>{completedCount + failedCount} / {totalCount}</span>{:else}<span>{completedCount} {$t("张已导出")}</span>{/if}{#if failedCount}<span class="failure-count">{failedCount} {$t("张失败")}</span>{/if}</button>
         {#if failedCount && !isRunning}<button class="button secondary compact" disabled={starting} title={$t("沿用本批次开始时的设置")} on:click={() => continueBatch('retry_failed')}>{$t("重试失败项")}</button>{/if}
       {/if}
-        {#if photos.length}<button type="button" class="icon-button clear-photos" aria-label={$t('清空列表')} title={$t('清空列表')} disabled={isRunning||starting||importing||undoing} on:click={()=>photoActions.requestRemoval(photos.map(photo=>photo.id))}><Trash2 size={16}/></button>{/if}
       </div>
     </section>
     {#if removalUndo.length||removalRedo.length||undoError}<div class="catalog-undo"><span role={undoError?'alert':'status'}>{undoError?$t(undoError):removalNotice?$t(removalNotice.kind==='undone'?'已恢复 {0} 张照片，原图保留':'已从目录移除 {0} 张照片，原图保留',{0:removalNotice.count}):''}</span><div class="catalog-history-actions">
@@ -1589,7 +1782,7 @@
   {#if dragActive}<div class="drop-overlay"><div><ImagePlus size={30} strokeWidth={1.5} /><strong>{$t(dragCount?'松开以添加 {0} 张照片':'松开以添加一组照片',{0:dragCount})}</strong><span>JPG · PNG · HEIC · HEIF</span><span>{$t(importing||loading?'会自动排队，随后逐张导入':'支持多选拖入，原照片保留在原位置')}</span></div></div>{/if}
 </div>
 
-<PhotoLibraryActions bind:this={photoActions} {photos} {selectedIds} onstep={stepPhoto} canUndo={!!removalUndo.length||!!settingsUndo.length||!!pendingUndo} onundo={undoAny} canRedo={!!removalRedo.length||!!settingsRedo.length} onredo={redoAny} disabled={!desktop||!initialized||loading||isRunning||starting||importing||undoing||agentBusy||scopeBusy} selectionDisabled={!desktop||!initialized||loading||starting||importing||pickingColor||undoing||agentBusy||scopeBusy} onselectall={selectAllPhotos} onclearselection={clearSelectedPhotos} oncontextselect={selectContextPhoto} onremove={removePhotos} onerror={message=>notices=[...notices,message]}/>
+<PhotoLibraryActions bind:this={photoActions} {photos} {selectedIds} onstep={stepPhoto} canUndo={!!removalUndo.length||!!settingsUndo.length||!!orderUndo.length||!!pendingUndo} onundo={undoAny} canRedo={!!removalRedo.length||!!settingsRedo.length||!!orderRedo.length} onredo={redoAny} onmove={nudgeSelection} disabled={!desktop||!initialized||loading||isRunning||starting||importing||undoing||agentBusy||scopeBusy} selectionDisabled={!desktop||!initialized||loading||starting||importing||pickingColor||undoing||agentBusy||scopeBusy} onselectall={selectAllPhotos} onclearselection={clearSelectedPhotos} oncontextselect={selectContextPhoto} onremove={removePhotos} onerror={message=>notices=[...notices,message]}/>
 
 {#if agentOpen}<AgentConnection onclose={()=>agentOpen=false} onstatus={status=>agentConnected=status.enabled}/>{/if}
 
@@ -1630,6 +1823,8 @@
   </div>
   <footer><button class="button secondary" disabled={starting} on:click={()=>exportDialog.close()}>{$t('返回编辑')}</button><button type="button" class="button primary start-export" on:click={startBatch} disabled={!desktop||!initialized||!exportPhotoIds.length||!!localError||starting||importing||isRunning}>{#if starting}<LoaderCircle size={16} class="spin"/>{:else}<Download size={16}/>{/if}{starting?$t('准备导出'):$t(exportPhotoIds.length===1?'开始导出 1 张':'开始导出 {0} 张',{0:exportPhotoIds.length})}</button></footer>
 </dialog>
+
+<ShortcutSheet bind:this={shortcutSheet}/>
 
 <dialog bind:this={jobDialog} class="job-dialog">
   <header><div><h2>{$t("处理记录")}</h2><p>{completedCount} {$t("张已导出")}{failedCount ? $t("，{0} 张失败", {0:failedCount}) : ''}{isRunning ? $t(" · 正在处理") : ''} {$t("· 沿用本批次开始时的设置")}</p></div><button class="icon-button" aria-label={$t("关闭处理记录")} on:click={() => jobDialog.close()}><X size={18} /></button></header>

@@ -1,4 +1,6 @@
-import type {RenderSettings,FontOption} from './types';
+import type {FrameBackground,RenderSettings,FontOption} from './types';
+// Kept local (not imported) so this module stays type-only at runtime; mirrors types.ts.
+const defaultBackground:FrameBackground={kind:'color',blur:0.6,dim:0.15};
 import type {ExplicitSettingsEdit} from './photo-settings';
 export interface AgentStatus {enabled:boolean;allowWrites:boolean;endpoint:string|null;toolCount:number;activeRequests:number;lastTool:string|null;clientJson:string;codexToml:string}
 export interface AgentCommand {requestId:string;name:string;arguments:Record<string,unknown>}
@@ -6,10 +8,11 @@ export interface AgentCommand {requestId:string;name:string;arguments:Record<str
 const keys={
   ratio:['width','height'],
   decoration:['kind','color','opacity','scale'],
+  background:['kind','blur','dim'],
   watermark:['kind','text','imagePath','fontPath','fontFamily','offsetX','offsetY','color','opacity','sizePercent','region','position','marginPercent','cameraTemplate'],
   export:['format','jpegQuality','longEdge','namePattern','keepCameraInfo'],
 };
-const top=['ratio','borderPercent','frameColor','decoration','watermark','export'];
+const top=['ratio','borderPercent','frameColor','decoration','background','watermark','export'];
 
 export function record(value:unknown):Record<string,unknown>{
   if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Expected an object');
@@ -26,7 +29,7 @@ export function patchAgentSettings(current:RenderSettings,value:unknown,fonts:Fo
       (next as unknown as Record<string,unknown>)[key]=value;continue;
     }
     const section=key as keyof typeof keys,fields=record(value);
-    const base=(next as unknown as Record<string,Record<string,unknown>|null>)[key]??{};
+    const base=(next as unknown as Record<string,Record<string,unknown>|null>)[key]??(key==='background'?{...defaultBackground}:{});
     const merged={...base};
     for(const [field,entry] of Object.entries(fields)){
       if(!keys[section].includes(field))throw new Error('Unsupported settings field: '+key+'.'+field);
@@ -58,6 +61,7 @@ export function explicitAgentEdit(value:unknown,next:RenderSettings):ExplicitSet
     return result;
   };
   if(patch.decoration)explicit.decoration=pick(record(patch.decoration),next.decoration);
+  if(patch.background)explicit.background=structuredClone(next.background);
   if(patch.watermark){
     const fields=record(patch.watermark);
     explicit.watermark=pick(fields,next.watermark);

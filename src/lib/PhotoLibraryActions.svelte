@@ -16,6 +16,8 @@
   export let onredo:()=>void;
   /** Arrow keys move the active photo; Shift extends the selection. */
   export let onstep:(delta:number,extend:boolean)=>void=()=>{};
+  /** Alt/Option + Left/Right moves the selected photos one place. */
+  export let onmove:(delta:number)=>void=()=>{};
   export let oncontextselect:(id:string)=>void;
   export let onremove:(ids:string[])=>Promise<void>;
   export let onerror:(message:string)=>void;
@@ -49,8 +51,10 @@
       if(!alive)return;
       dialog.close('removed');
       await tick();
-      // Native dialog restores focus itself unless the removed thumbnail was its invoker.
-      if(!invoker?.isConnected){
+      // Native dialog restores focus itself unless the removed thumbnail was its
+      // invoker. The toolbar's remove button now targets a different selection,
+      // so continue from the surviving photo there too.
+      if(!invoker?.isConnected||invoker.classList.contains('remove-photo')){
         const next=document.querySelector<HTMLElement>('.filmstrip .thumbnail.active, .empty-state button');
         next?.focus({preventScroll:true});
       }
@@ -112,6 +116,10 @@
     if(!selectionDisabled&&event.key==='Escape'&&!event.metaKey&&!event.ctrlKey&&!event.altKey&&!event.shiftKey){
       if(selectedIds.length){event.preventDefault();onclearselection();}
       return;
+    }
+    if(!disabled&&event.altKey&&!event.metaKey&&!event.ctrlKey&&!event.shiftKey&&['ArrowLeft','ArrowRight'].includes(event.key)
+      &&!target?.closest('[role="tab"],[role="tablist"],[role="menu"],[role="slider"],.pan-surface,.mark-handle')){
+      event.preventDefault();onmove(event.key==='ArrowLeft'?-1:1);return;
     }
     if(!selectionDisabled&&['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.key)&&!event.metaKey&&!event.ctrlKey&&!event.altKey
       &&!target?.closest('[role="tab"],[role="tablist"],[role="menu"],[role="slider"],.pan-surface,.mark-handle')){

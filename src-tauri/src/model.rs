@@ -7,6 +7,8 @@ pub struct RenderSettings {
     pub border_percent: f64,
     pub frame_color: String,
     pub decoration: FrameDecoration,
+    /// Plain frame colour or a blurred copy of the photo behind the frame.
+    pub background: crate::backdrop::FrameBackground,
     pub artwork: Option<crate::artwork::ArtScene>,
     pub watermark: WatermarkSettings,
     pub export: ExportSettings,
@@ -19,6 +21,7 @@ impl Default for RenderSettings {
             border_percent: 5.0,
             frame_color: "#ffffff".into(),
             decoration: FrameDecoration::default(),
+            background: Default::default(),
             artwork: None,
             watermark: WatermarkSettings::default(),
             export: ExportSettings::default(),

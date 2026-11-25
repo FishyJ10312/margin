@@ -128,6 +128,7 @@ pub fn validate_settings(settings: &RenderSettings) -> Result<(), String> {
     }
     parse_color(&settings.frame_color)?;
     crate::decoration::validate(&settings.decoration)?;
+    crate::backdrop::validate(&settings.background)?;
     if !matches!(settings.export.format.as_str(), "jpg" | "png") {
         return Err("请选择 JPG 或 PNG 导出格式".into());
     }
@@ -943,6 +944,9 @@ fn compose(
         pixel.copy_from_slice(&c);
     }
     let mut canvas = RgbImage::from_raw(layout.width, layout.height, data).ok_or("画布尺寸无效")?;
+    if let Some(backdrop) = crate::backdrop::prepare(source, &settings.background, c, layout.width, layout.height) {
+        crate::backdrop::paint(&mut canvas, &backdrop, 0, 0, layout.width, layout.height);
+    }
     if source.dimensions() == (layout.photo_width, layout.photo_height) {
         blend_rgb(&mut canvas, source, layout.x, layout.y);
     } else {
@@ -1870,6 +1874,9 @@ pub fn watermark_detail(
     let h = (scale(y1) - oy).max(1);
     let c = parse_color(&settings.frame_color)?;
     let mut canvas = RgbImage::from_pixel(w, h, image::Rgb(c));
+    if let Some(backdrop) = crate::backdrop::prepare(&source.pixels, &settings.background, c, l.width, l.height) {
+        crate::backdrop::paint(&mut canvas, &backdrop, ox, oy, l.width, l.height);
+    }
     for y in 0..h {
         for x in 0..w {
             let gx = x + ox;
@@ -1909,7 +1916,7 @@ pub fn watermark_detail(
             }
             let target = canvas.get_pixel_mut(x, y);
             for i in 0..3 {
-                target[i] = (rgba[i] + f64::from(c[i]) * (1. - rgba[3])).round() as u8;
+                target[i] = (rgba[i] + f64::from(target[i]) * (1. - rgba[3])).round() as u8;
             }
         }
     }
@@ -2061,5 +2068,127 @@ mod chinese_tests {
         }
         assert_ne!(rendered[0], rendered[1]);
         assert_ne!(rendered[1], rendered[2]);
+    }
+}
+
+/// Landscape / portrait / square checks for every built-in template.
+/// `template_board` (ignored) writes a visual acceptance board per template:
+/// `MARGIN_BOARD_DIR=/some/dir cargo test --lib template_board -- --ignored`.
+#[cfg(test)]
+mod template_qa {
+    use super::*;
+    use image::Rgb;
+    use crate::model::Ratio;
+
+    /// A busy, asymmetric test photo so misplaced art over the opening shows.
+    fn photo(w: u32, h: u32) -> RgbaImage {
+        RgbaImage::from_fn(w, h, |x, y| {
+            let edge = x < 3 || y < 3 || x >= w - 3 || y >= h - 3;
+            if edge {
+                return Rgba([230, 40, 40, 255]);
+            }
+            let fx = x as f32 / w as f32;
+            let fy = y as f32 / h as f32;
+            let grid = (x / 40 + y / 40) % 2 == 0;
+            let g = if grid { 18 } else { 0 };
+            Rgba([(60. + 120. * fx) as u8 + g, (90. + 80. * fy) as u8 + g, (150. - 60. * fx) as u8 + g, 255])
+        })
+    }
+
+    /// Photo sizes are 900/600/720 px divided by `div`.
+    /// The board can use a real picture (MARGIN_BOARD_PHOTO), cover-cropped
+    /// to each case; tests always use the synthetic photo.
+    fn sample_photo(w: u32, h: u32) -> RgbaImage {
+        match std::env::var("MARGIN_BOARD_PHOTO") {
+            Ok(path) if !path.is_empty() => {
+                let img = image::open(path).unwrap().to_rgba8();
+                let f = (w as f32 / img.width() as f32).max(h as f32 / img.height() as f32);
+                let (rw, rh) = ((img.width() as f32 * f).ceil() as u32, (img.height() as f32 * f).ceil() as u32);
+                let scaled = imageops::resize(&img, rw.max(w), rh.max(h), imageops::FilterType::Triangle);
+                imageops::crop_imm(&scaled, (scaled.width() - w) / 2, (scaled.height() - h) / 2, w, h).to_image()
+            }
+            _ => photo(w, h),
+        }
+    }
+
+    fn cases(div: u32) -> Vec<(&'static str, u32, u32, Option<Ratio>)> {
+        let (a, b, c) = (900 / div, 600 / div, 720 / div);
+        vec![
+            ("landscape", a, b, None),
+            ("portrait", b, a, None),
+            ("square", c, c, None),
+            ("landscape-1x1", a, b, Some(Ratio { width: 1., height: 1. })),
+            ("portrait-4x5", b, a, Some(Ratio { width: 4., height: 5. })),
+            ("landscape-16x9", a, b, Some(Ratio { width: 16., height: 9. })),
+        ]
+    }
+
+    fn render(id: &str, w: u32, h: u32, ratio: Option<Ratio>, border: Option<f64>) -> (RgbImage, Layout, RgbaImage) {
+        let mut s = crate::designs::settings(id).unwrap();
+        s.watermark.kind = "none".into();
+        s.export.long_edge = None;
+        s.ratio = ratio;
+        if let Some(b) = border {
+            s.border_percent = b;
+        }
+        validate_settings(&s).unwrap();
+        let source = sample_photo(w, h);
+        let l = layout::calculate(w, h, &s).unwrap();
+        (compose(&source, &s, l, None, None, l).unwrap(), l, source)
+    }
+
+    #[test]
+    fn every_template_keeps_the_photo_opening_untouched_in_every_orientation() {
+        let mut problems = Vec::new();
+        for frame in crate::designs::library().unwrap() {
+            for (name, w, h, ratio) in cases(3) {
+                for border in [None, Some(4.)] {
+                    let (out, l, source) = render(&frame.id, w, h, ratio.clone(), border);
+                    assert_eq!((l.photo_width, l.photo_height), (w, h), "{} {name}: photo is never resized", frame.id);
+                    let mut changed = 0usize;
+                    for y in 0..h {
+                        for x in 0..w {
+                            let s = source.get_pixel(x, y);
+                            let o = out.get_pixel(x + l.x, y + l.y);
+                            if (0..3).any(|c| s[c] != o[c]) {
+                                changed += 1;
+                            }
+                        }
+                    }
+                    if changed > 0 {
+                        problems.push(format!("{} {name} border={border:?}: {changed} photo pixels covered", frame.id));
+                    }
+                }
+            }
+        }
+        assert!(problems.is_empty(), "{}", problems.join("\n"));
+    }
+
+    #[test]
+    #[ignore]
+    fn template_board() {
+        let dir = std::path::PathBuf::from(std::env::var("MARGIN_BOARD_DIR").expect("set MARGIN_BOARD_DIR"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let cell = 300u32;
+        // MARGIN_BOARD_IDS=a,b limits the board to some templates.
+        let only = std::env::var("MARGIN_BOARD_IDS").unwrap_or_default();
+        for frame in crate::designs::library().unwrap() {
+            if !only.is_empty() && !only.split(',').any(|id| id == frame.id) {
+                continue;
+            }
+            let cases = cases(1);
+            let mut board = RgbImage::from_pixel(cell * cases.len() as u32 + 10 * (cases.len() as u32 + 1), cell * 2 + 30, Rgb([40, 40, 40]));
+            for (row, border) in [None, Some(4.)].into_iter().enumerate() {
+                for (col, (_, w, h, ratio)) in cases.iter().enumerate() {
+                    let (out, _, _) = render(&frame.id, *w, *h, ratio.clone(), border);
+                    let f = cell as f32 / out.width().max(out.height()) as f32;
+                    let small = imageops::resize(&out, (out.width() as f32 * f) as u32, (out.height() as f32 * f) as u32, imageops::FilterType::Triangle);
+                    let ox = 10 + col as u32 * (cell + 10) + (cell - small.width()) / 2;
+                    let oy = 10 + row as u32 * (cell + 10) + (cell - small.height()) / 2;
+                    imageops::overlay(&mut board, &small, ox.into(), oy.into());
+                }
+            }
+            board.save(dir.join(format!("{}.png", frame.id))).unwrap();
+        }
     }
 }

@@ -17,7 +17,7 @@ The agent should read the workspace first and use its current photo IDs.
 | `margin_get_workspace` | Current photos (paged), selection, settings and history counts |
 | `margin_import_photos` | Up to 100 absolute JPG/PNG/HEIC/HEIF paths; deduplicated |
 | `margin_select_photos` | Explicit IDs, all or none, active photo and Shift anchor |
-| `margin_update_settings` | Partial frame, ratio, pattern, watermark or export edits |
+| `margin_update_settings` | Partial frame, ratio, pattern, background (`color` or blurred photo), watermark or export edits |
 | `margin_get_preview` | Actual bounded framed image, including the watermark |
 | `margin_list_fonts` | Available built-in/system fonts, including Chinese fonts |
 | `margin_list_templates` | Built-in and saved template IDs/descriptions |

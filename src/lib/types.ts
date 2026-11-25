@@ -52,6 +52,8 @@ export interface RenderSettings {
   borderPercent: number;
   frameColor: string;
   decoration: FrameDecoration;
+  /** Plain frame colour, or a blurred copy of the photo mixed toward frameColor. */
+  background?: FrameBackground;
   artwork?:ArtScene|null;
   watermark: WatermarkSettings;
   export: ExportSettings;
@@ -140,6 +142,7 @@ export const defaultSettings: RenderSettings = {
   borderPercent: 5,
   frameColor: '#FFFFFF',
   decoration: {kind:'none',color:'#75816F',opacity:0.12,scale:1},
+  background: {kind:'color',blur:0.6,dim:0.15},
   watermark: {
     kind: 'none',
     text: '',
@@ -162,6 +165,8 @@ export const defaultSettings: RenderSettings = {
 export interface FontOption { family: string; path: string;chinese?:boolean;bundled?:boolean }
 export interface ColorSample { x: number; y: number; hex: string; patchDataUrl: string }
 
+export interface FrameBackground {kind:'color'|'blur';blur:number;dim:number}
+export const defaultBackground:FrameBackground={kind:'color',blur:0.6,dim:0.15};
 export interface FrameDecoration {kind:'none'|'paper'|'linen'|'dots'|'lines'|'waves'|'corners';color:string;opacity:number;scale:number}
 export interface FrameSuggestion {title:string;rationale:string;frameColor:string;borderPercent:number;decoration:FrameDecoration;artwork:ArtScene}
 export interface ImageConfig {provider:'codex'|'openai';baseUrl:string;model:string;quality:'low'|'medium'|'high';size:'1024x1024'|'1536x1024'|'1024x1536';codexModel:string}

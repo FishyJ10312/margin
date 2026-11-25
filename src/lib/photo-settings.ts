@@ -1,6 +1,8 @@
-import type { FrameDecoration, RenderSettings, WatermarkSettings } from './types';
+import type { FrameBackground, FrameDecoration, RenderSettings, WatermarkSettings } from './types';
+// Kept local (not imported) so this module stays type-only at runtime; mirrors types.ts.
+const defaultBackground: FrameBackground = { kind: 'color', blur: 0.6, dim: 0.15 };
 
-export type ExplicitFrameEdit = Partial<Pick<RenderSettings, 'frameColor' | 'ratio' | 'artwork' | 'borderPercent' | 'decoration'>>;
+export type ExplicitFrameEdit = Partial<Pick<RenderSettings, 'frameColor' | 'ratio' | 'artwork' | 'borderPercent' | 'decoration' | 'background'>>;
 export type ExplicitSettingsEdit = Omit<ExplicitFrameEdit, 'decoration'> & {
   decoration?: Partial<FrameDecoration>;
   watermark?: Partial<WatermarkSettings>;
@@ -55,7 +57,7 @@ export function photoEdit(before: RenderSettings, after: RenderSettings, explici
 }
 
 export function frameStyleEdit(style: RenderSettings, keepLayout = false): ExplicitSettingsEdit {
-  const styleFields = { frameColor: style.frameColor, decoration: style.decoration, artwork: style.artwork ?? null };
+  const styleFields = { frameColor: style.frameColor, decoration: style.decoration, background: style.background ?? { ...defaultBackground }, artwork: style.artwork ?? null };
   return keepLayout ? styleFields : { ...styleFields, ratio: style.ratio, borderPercent: style.borderPercent };
 }
 

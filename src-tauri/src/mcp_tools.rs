@@ -11,6 +11,7 @@ pub fn definitions() -> Vec<Value> {
         "ratio":{"type":["object","null"],"additionalProperties":false,"required":["width","height"],"properties":{"width":{"type":"number","exclusiveMinimum":0,"maximum":1000},"height":{"type":"number","exclusiveMinimum":0,"maximum":1000}}},
         "borderPercent":{"type":"number","minimum":0,"maximum":30},"frameColor":color,
         "decoration":{"type":"object","additionalProperties":false,"properties":{"kind":{"enum":["none","paper","linen","dots","lines","waves","corners"]},"color":color,"opacity":{"type":"number","minimum":0,"maximum":1},"scale":{"type":"number","minimum":0.1,"maximum":10}}},
+        "background":{"type":"object","additionalProperties":false,"description":"Behind the frame: kind color uses frameColor; kind blur shows a blurred copy of the photo, mixed toward frameColor by dim. The photo itself is never cropped.","properties":{"kind":{"enum":["color","blur"]},"blur":{"type":"number","minimum":0,"maximum":1},"dim":{"type":"number","minimum":0,"maximum":0.8}}},
         "watermark":{"type":"object","additionalProperties":false,"properties":{
             "kind":{"enum":["none","text","image","camera"]},"text":{"type":"string","maxLength":1024},"cameraTemplate":{"type":"string","maxLength":200},"imagePath":nullable_path,"fontPath":nullable_path,"fontFamily":{"type":["string","null"],"maxLength":200},
             "sizePercent":{"type":"number","minimum":0.1,"maximum":30},"opacity":{"type":"number","minimum":0,"maximum":1},"color":color,

@@ -5,6 +5,7 @@ import './gallery.css';
 import './paper.css';
 import './darkroom.css';
 import './light.css';
+import './workspace.css';
 
 const app = mount(App, { target: document.getElementById('app')! });
 export default app;
