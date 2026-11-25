@@ -126,6 +126,9 @@ fn packet(g: &DesignGeometry, current: &FrameSuggestion) -> Result<Value, String
     Ok(p)
 }
 pub(crate) fn check_source(g: &DesignGeometry, current: &FrameSuggestion) -> Result<(), String> {
+    if crate::art_director::is_director(current) {
+        return Ok(());
+    }
     packet(g, current).map(|_| ())
 }
 
@@ -244,6 +247,7 @@ pub(crate) fn parse(text: &str, p: &AiPhoto) -> Result<Vec<FrameSuggestion>, Str
         frame_color: r.frame_color.to_uppercase(),
         border_percent: current.border_percent,
         decoration: current.decoration.clone(),
+        caption: String::new(),
         artwork: scene,
     }])
 }
@@ -277,6 +281,7 @@ mod tests {
                 frame_color: "#F3E7D5".into(),
                 border_percent: 12.,
                 decoration: Default::default(),
+                caption: String::new(),
                 artwork: ArtScene {
                     elements: serde_json::from_value(json!([curve, fish])).unwrap(),
                     ..Default::default()

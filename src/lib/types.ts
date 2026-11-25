@@ -168,7 +168,7 @@ export interface ColorSample { x: number; y: number; hex: string; patchDataUrl: 
 export interface FrameBackground {kind:'color'|'blur';blur:number;dim:number}
 export const defaultBackground:FrameBackground={kind:'color',blur:0.6,dim:0.15};
 export interface FrameDecoration {kind:'none'|'paper'|'linen'|'dots'|'lines'|'waves'|'corners';color:string;opacity:number;scale:number}
-export interface FrameSuggestion {title:string;rationale:string;frameColor:string;borderPercent:number;decoration:FrameDecoration;artwork:ArtScene}
+export interface FrameSuggestion {title:string;rationale:string;frameColor:string;borderPercent:number;decoration:FrameDecoration;artwork:ArtScene;caption?:string}
 export interface ImageConfig {provider:'codex'|'openai';baseUrl:string;model:string;quality:'low'|'medium'|'high';size:'1024x1024'|'1536x1024'|'1024x1536';codexModel:string}
 export const defaultImageConfig:ImageConfig={provider:'codex',baseUrl:'https://api.openai.com/v1',model:'gpt-image-2.5-flare',quality:'medium',size:'1024x1024',codexModel:''};
 export interface FrameDesign {style:'auto'|'graphic'|'editorial'|'film'|'linework'|'collage'|'illustration'|'custom';placement:'auto'|'corners'|'sides'|'bottom';palette:'photo'|'mono'|'custom';colors:string[];texture:boolean;notes:string}

@@ -2,6 +2,7 @@
   import {t} from './lib/i18n';
   import {actualPhotoSettings,adoptOwnedAssets,frameStyleEdit,photoEdit,type ExplicitSettingsEdit,type PhotoEditPolicy} from './lib/photo-settings';
   import { onMount, onDestroy, tick } from 'svelte';
+  import {captionFont,captionWatermark} from './lib/art-caption';
   import { invoke } from '@tauri-apps/api/core';
   import { listen } from '@tauri-apps/api/event';
   import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
@@ -365,8 +366,9 @@
   let showPatternMotifs=false;
   const motifs: {kind:FrameDecoration['kind'];name:string}[]=[{kind:'none',name:'纯色'},{kind:'paper',name:'纸感'},{kind:'linen',name:'亚麻'},{kind:'dots',name:'点阵'},{kind:'lines',name:'细条纹'},{kind:'waves',name:'柔波纹'},{kind:'corners',name:'角标'}];
   function applyArt(suggestion:FrameSuggestion) {
-    const next={...settings,frameColor:suggestion.frameColor,borderPercent:suggestion.borderPercent,decoration:clone(suggestion.decoration),artwork:clone(suggestion.artwork)};
-    performFrameEdit(next,{frameColor:next.frameColor,borderPercent:next.borderPercent,decoration:next.decoration,artwork:next.artwork});
+    const watermark=captionWatermark(settings.watermark,suggestion,captionFont(fonts.map(f=>f.family)));
+    const next={...settings,frameColor:suggestion.frameColor,borderPercent:suggestion.borderPercent,decoration:clone(suggestion.decoration),artwork:clone(suggestion.artwork),watermark:clone(watermark)};
+    performFrameEdit(next,{frameColor:next.frameColor,borderPercent:next.borderPercent,decoration:next.decoration,artwork:next.artwork,...(watermark!==settings.watermark?{watermark:next.watermark}:{})});
     modelOpen=false;stagedModelConfig=null;
   }
   function performFrameEdit(next:RenderSettings,explicit:ExplicitSettingsEdit,policy:PhotoEditPolicy={}){

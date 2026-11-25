@@ -882,8 +882,7 @@ async fn frame_service_uses_chatgpt_for_design_and_keeps_image_provider_independ
     let mut ai = crate::art_ai::ArtAi::new(dir.path().into());
     ai.chatgpt = server.auth(dir.path().join("chatgpt"), Arc::new(MemoryVault::default()));
     let id = login(&ai.chatgpt, "a", true).await.active_id.unwrap();
-    let suggestions:Vec<_>=(0..3).map(|i|json!({"title":format!("方案 {i}"),"rationale":"呼应照片的青绿线条","frameColor":"#F3ECDD","borderPercent":5,"decoration":{"kind":"none","color":"#456789","opacity":0.,"scale":1.},"artwork":{"elements":[{"kind":"curve","x":0.,"y":0.,"width":100.,"height":100.,"rotation":0.,"color":"#345678","opacity":0.8,"strokeWidth":2.,"filled":false,"points":[[10.,20.],[200.,40.],[700.,30.],[990.,20.]]}]}})).collect();
-    *server.data.output.lock().unwrap() = json!({"suggestions":suggestions}).to_string();
+    *server.data.output.lock().unwrap() = crate::art_director::fixture();
     let prepared = ai
         .prepare("data:image/jpeg;base64,eA==".into(), 900, 600)
         .unwrap();

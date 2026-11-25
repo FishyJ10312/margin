@@ -32,5 +32,17 @@
   "呼应照片主题的完整插画，交织线条与精致细节，主次清晰": "A complete illustration inspired by the photo, with woven linework, refined details and visual hierarchy",
   "插画随四边与四角等比铺满，边缘可能裁切；照片始终完整保留。": "Illustrations fill the sides and corners without stretching. Some artwork edges may be cropped; the photograph stays intact.",
   "系统凭据库仍在等待响应，请先处理系统授权窗口后重试": "The system credential store is still waiting. Resolve any system authorization dialog before trying again.",
-  "读取系统凭据库超时，请先处理系统授权窗口，再到模型配置中重试或重新登录": "The system credential store timed out. Resolve any system authorization dialog, then retry or sign in again in Model settings."
+  "读取系统凭据库超时，请先处理系统授权窗口，再到模型配置中重试或重新登录": "The system credential store timed out. Resolve any system authorization dialog, then retry or sign in again in Model settings.",
+  "艺术风格 · 本机渲染": "Art styles · rendered locally",
+  "下面是按这张照片配好颜色的风格，免费、不发送照片。想要 AI 帮你挑选并起标题，再连接模型生成。": "Below are styles already coloured from this photo. They're free and nothing is sent. To have AI choose and title them, connect a model and generate.",
+  "按照片配色的风格": "Styles coloured from the photo",
+  "按这张照片配好的风格": "Styles for this photo",
+  "免费 · 不发送照片": "Free · nothing sent",
+  "{0} 的实际边框预览": "Actual frame preview of {0}",
+  "应用": "Apply",
+  "存为模板": "Save as template",
+  "显示全部 {0} 种": "Show all {0}",
+  "让 AI 挑选三套并起标题": "Let AI pick three and title them",
+  "美术馆卡纸": "Museum Mat",
+  "安静的卡纸让照片像挂在墙上的作品。": "A quiet mat that hangs the photo like a print."
 }

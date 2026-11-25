@@ -5,6 +5,8 @@
  import ArtDirection from './ArtDirection.svelte';
  import {defaultImageConfig,defaultFrameDesign,piProviders} from './types';
  import {isOpenAiImageApi} from './image-api-config';
+ import {captionFont,suggestionSettings} from './art-caption';
+ import type {FontOption} from './types';
  import { X, LoaderCircle, WandSparkles, RotateCcw } from '@lucide/svelte';
 
  import type { AiConfig, AiPhoto, AiState, FrameSuggestion, Photo, RenderSettings, PreviewResult,GeneratedArt,ChatGptDiagnostic,ChatGptState,ChatGptModel,PiCatalog } from './types';
@@ -52,6 +54,8 @@
  let chatgptDiagnostic:ChatGptDiagnostic|null=null;
  $: previewAspect=prepared?.geometry?`${prepared.geometry.canvasWidth} / ${prepared.geometry.canvasHeight}`:baseSettings.ratio?`${baseSettings.ratio.width} / ${baseSettings.ratio.height}`:`${photo.width} / ${photo.height}`;
  let problem = '';
+ // Free, instant suggestions rendered locally from the photo's own colours.
+ let localSuggestions:FrameSuggestion[]=[],localPreviews:Record<number,string>={},showAllLocal=false,captionFamily:string|null=null;
  let suggestions: FrameSuggestion[] = [];
  let previews:Record<number,string>={};
  $: localPreviewPending=resultReceived&&suggestions.some((_,i)=>!previews[i]);
@@ -75,12 +79,27 @@
    // Older style cards must not silently constrain a new photo-led request.
    if(config.frameDesign.style!=='auto'){config.frameDesign.style='auto';config.frameDesign.placement='auto';config.designDensity='auto';}
    prepared=p;
+   if(mode==='design'&&!imageTask)void loadLocal(p,run);
    creativeBrief=completeFrame?config.frameDesign.notes:config.styleDirection;
    if(mode==='refine'&&!hasInitialized&&!initialConfig)creativeBrief=$t('保留当前主题，优化图案形状、大小、位置与布局，让照片成为视觉中心');
    hasInitialized=true;
    // A slow analysis-model catalog must not hide the image-generation selector.
    if(!imageTask&&(config.provider==='pi'||config.provider==='chatgpt'))void checkAnalysisConnection(config,run);
   }catch(error){if(alive&&run===initialization)problem=String(error);}finally{if(alive&&run===initialization)loading=false;}
+ }
+ async function loadLocal(p:AiPhoto,run:number){
+  const live=()=>alive&&run===initialization;
+  try{
+   if(captionFamily===null)captionFamily=captionFont((await invoke<FontOption[]>('list_fonts')).map(f=>f.family));
+   const list=await invoke<FrameSuggestion[]>('local_art_suggestions',{token:p.token,language:$language});
+   if(!live())return;
+   localSuggestions=list;localPreviews={};
+   for(let i=0;i<list.length;i++){
+    const r=await invoke<PreviewResult>('get_preview',{photoId:photo.id,settings:suggestionSettings(baseSettings,list[i],captionFamily)});
+    if(!live())return;
+    localPreviews={...localPreviews,[i]:r.dataUrl};
+   }
+  }catch{/* Local suggestions are a convenience; the model route still works. */}
  }
  async function checkAnalysisConnection(selected:AiConfig,run:number){
   const active=()=>alive&&run===initialization&&!imageTask;
@@ -168,7 +187,7 @@
   generationPhase='preview';
   for(let i=0;i<suggestions.length;i++){
    if(previews[i])continue;
-   const s=suggestions[i];const result=await invoke<PreviewResult>('get_preview',{photoId:photo.id,settings:{...baseSettings,...s,watermark:{...baseSettings.watermark,kind:'none'}}});
+   const s=suggestions[i];const result=await invoke<PreviewResult>('get_preview',{photoId:photo.id,settings:s.artwork?.design?.id?.startsWith('art-')?suggestionSettings(baseSettings,s,captionFamily):{...baseSettings,...s,watermark:{...baseSettings.watermark,kind:'none'}}});
    if(!alive||cancelRequested)return;
    previews={...previews,[i]:result.dataUrl};
   }
@@ -193,17 +212,28 @@
   {#if loading}<p class="model-loading"><LoaderCircle size={17} class="spin" />{$t("准备照片与本机连接…")}</p>{:else}
   <div class="analysis-photo">{#if prepared}<img src={prepared.dataUrl} width="80" height="64" alt={$t("将交给模型分析的照片缩略图")}/><div><strong>{photo.name}</strong><p>{$t(mode==='refine'?'参考原照片和当前边框，调整后先预览':'保留照片与画布比例，设计只出现在留白区域')}</p></div>{/if}</div>
   {#if mode==='refine'&&prepared?.before&&!suggestions.length}<div class="refine-before"><img src={prepared.before} alt={$t('发送给模型的当前配框预览，不含水印')}/><p>{$t(imageTask?'根据当前边框重新绘制图案形状、大小与布局；本轮会使用一次生图额度。':'可调整线条形状、图案大小与位置，重新安排布局。PNG 素材可移动、缩放和翻转。')}</p></div>{/if}
+  {#if mode==='design'&&!imageTask&&localSuggestions.length}
+   <section class="local-styles" aria-label={$t('按照片配色的风格')}>
+    <header><h3>{$t('按这张照片配好的风格')}</h3><span>{$t('免费 · 不发送照片')}</span></header>
+    <div class="local-grid">{#each (showAllLocal?localSuggestions:localSuggestions.slice(0,6)) as s,i}<article>
+     <div class="local-image" style:aspect-ratio={previewAspect}>{#if localPreviews[i]}<img src={localPreviews[i]} alt={$t('{0} 的实际边框预览',{0:s.title})}/>{:else}<LoaderCircle size={15} class="spin"/>{/if}</div>
+     <h4>{s.title}</h4><p>{s.rationale}</p>
+     <div class="local-actions"><button class="button secondary compact" disabled={busy||!localPreviews[i]} on:click={()=>onapply(s)}>{$t('应用')}</button><button class="text-button" disabled={busy||!localPreviews[i]} on:click={()=>onsavetemplate(s)}>{$t('存为模板')}</button></div>
+    </article>{/each}</div>
+    {#if !showAllLocal&&localSuggestions.length>6}<button type="button" class="text-button" on:click={()=>showAllLocal=true}>{$t('显示全部 {0} 种',{0:localSuggestions.length})}</button>{/if}
+   </section>
+  {/if}
   <form aria-label={$t("艺术边框生成设置")} on:submit|preventDefault={generate}>
    <fieldset disabled={busy||generationLocked}><legend class="sr-only">{$t("艺术边框生成设置")}</legend>
     {#if mode !== 'refine'}
      <div class="generation-method">
       <label class="field-label" for="generation-method">{$t('生成方式')}</label>
       <select id="generation-method" value={generationKind} aria-describedby="generation-method-help" on:change={event=>changeGeneration(event.currentTarget.value)}>
-       <option value="design">{$t('分析配框 · 可编辑')}</option>
+       <option value="design">{$t('艺术风格 · 本机渲染')}</option>
        <option value="image">{$t('完整插画边框 · 生图')}</option>
        <option value="sticker">{$t('独立装饰素材 · 生图')}</option>
       </select>
-      <p id="generation-method-help" class="field-help">{$t(imageTask?'由下方生图服务绘制图片，Margin 将图案合成到照片留白处。':'根据照片生成可编辑的配框方案，Margin 在本机绘制线条和图案。')}</p>
+      <p id="generation-method-help" class="field-help">{$t(imageTask?'由下方生图服务绘制图片，Margin 将图案合成到照片留白处。':'下面是按这张照片配好颜色的风格，免费、不发送照片。想要 AI 帮你挑选并起标题，再连接模型生成。')}</p>
      </div>
     {/if}
     <label class="field-label" for="style-direction">{$t(mode==='refine'?'这次想怎么调整？':'你的想法（可选）')}</label>
@@ -229,7 +259,7 @@
     {/if}
     {#if !imageTask&&connectionChecking}<p class="field-help" role="status">{$t('正在检查分析模型连接… 可以先切换到生图。')}</p>{/if}
     <label class="model-consent"><input type="checkbox" bind:checked={consent} disabled={!generationReady}/><span>{completeFrame?$t(mode==='refine'?'同意发送照片与当前边框缩略图，生成一幅精修边框并使用 {0} 的生图额度':'同意发送这张照片的缩略图，生成一幅艺术边框并使用 {0} 的生图额度',{0:config.image.provider==='codex'?'Codex':config.image.model+' · '+config.image.baseUrl}):imageTask&&config.image.provider==='openai'?$t('同意向 {0} 发送设计方向{1}，使用 {2} 生成一张透明图片并消耗该 API 额度',{0:config.image.baseUrl,1:reference?$t('与参考缩略图'):'',2:config.image.model}):imageTask?$t(reference?'同意发送方向与参考缩略图，生成一张图片并使用 Codex 额度':'同意只发送设计方向，生成一张图片并使用 Codex 额度'):config.provider==='pi'?$t(mode==='refine'?'同意通过 {0} 发送原图与配框缩略图，使用 {1} 调用 {2} 精修一轮':'同意通过 {0} 发送此缩略图，使用 {1} 调用 {2} 分析配框',{0:connectionName,1:$t(piProviders.find(p=>p.id===(config.piProvider||'openai'))?.billing||'订阅用量'),2:config.model}):config.provider==='chatgpt'?$t(mode==='refine'?'同意向 OpenAI 发送原图与配框缩略图，使用 {0} 的 ChatGPT 授权用量调用 {1} 精修一轮':'同意向 OpenAI 发送此缩略图，使用 {0} 的 ChatGPT 授权用量调用 {1} 分析配框',{0:chatgptLabel||$t('当前账户'),1:config.model||$t('所选模型')}):mode==='refine'?$t('同意发送原图缩略图与当前配框预览，调用模型一轮并使用所选入口的额度'):config.provider==='codex'?$t("同意将这张缩略图交给当前登录的 Codex 处理，并使用其额度"):$t("同意向 {0} 发送这张缩略图，并使用我的 API 额度", {0:config.baseUrl || '所填接口'})}</span></label>
-    <button class="button primary full-width" type="submit" disabled={!consent||!prepared||busy||generationLocked||!generationReady}><WandSparkles size={15} />{$t(mode==='refine'?'精修一次':completeFrame?'生成边框':imageTask?'生成装饰素材':'生成三套边框建议')}</button>
+    <button class="button primary full-width" type="submit" disabled={!consent||!prepared||busy||generationLocked||!generationReady}><WandSparkles size={15} />{$t(mode==='refine'?'精修一次':completeFrame?'生成边框':imageTask?'生成装饰素材':'让 AI 挑选三套并起标题')}</button>
    </fieldset>
   </form>
   {/if}
@@ -246,6 +276,10 @@
 </dialog>
 
 <style>
+.local-styles{margin-block:4px 18px;}.local-styles>header{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-block-end:10px;}.local-styles h3{font-size:13px;font-weight:600;margin:0;}.local-styles header span{font-size:11px;color:var(--muted);}
+.local-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}@container(max-width:520px){.local-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+.local-grid article{display:grid;gap:5px;min-width:0;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--surface-soft);}.local-image{display:grid;place-items:center;max-height:150px;overflow:hidden;border-radius:4px;}.local-image img{display:block;width:100%;height:100%;object-fit:contain;}
+.local-grid h4{font-size:12px;font-weight:600;margin:2px 0 0;}.local-grid p{font-size:11px;line-height:1.55;color:var(--muted);margin:0;}.local-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px;}
 .generation-method{display:grid;gap:5px;margin-block:0 16px;}
 .generation-method select{width:100%;}
 .generation-progress-copy{display:grid;gap:3px;flex:1;min-width:0;}
