@@ -198,6 +198,6 @@ export interface Sticker {imagePath:string;anchor:string;scale:number;opacity:nu
 export interface FrameImage {imagePath:string;reference:{width:number;height:number;x:number;y:number;photoWidth:number;photoHeight:number};opacity:number}
 export interface ArtScene {elements:ArtElement[];design?:DesignRecipe|null;reference?:unknown;stickers?:Sticker[];frameImage?:FrameImage|null}
 export interface BuiltinFrame {id:string;name:string;englishName:string;category:string;description:string;settings:RenderSettings;thumbnail:string}
-export interface GeneratedArt {imagePath:string;thumbnail:string;width:number;height:number;summary:string}
+export interface GeneratedArt {imagePath:string;thumbnail:string;width:number;height:number;summary:string;borderPercent?:number}
 
 export interface FrameTemplate {id:string;name:string;settings:RenderSettings;thumbnail:string}

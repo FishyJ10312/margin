@@ -11,6 +11,10 @@ pub struct GeneratedArt {
     pub width: u32,
     pub height: u32,
     pub summary: String,
+    /// For complete frames: the border percentage at which this artwork's own
+    /// band thickness fits the photograph, so applying it never squeezes motifs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub border_percent: Option<f64>,
 }
 
 pub(crate) async fn save_png(
@@ -78,6 +82,7 @@ async fn save(
             width,
             height,
             summary,
+            border_percent: None,
         })
     })
     .await

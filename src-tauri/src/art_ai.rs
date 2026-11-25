@@ -329,9 +329,11 @@ impl ArtAi {
         if let Ok(mut c) = self.cancel.lock() {
             *c = None;
         }
-        let generated = result?;
+        let mut generated = result?;
         if frame {
             crate::frame_art::validate_generated(&generated.image_path)?;
+            generated.border_percent =
+                crate::frame_art::fitting_border_percent(&generated.image_path, photo.width, photo.height);
         }
         Ok(generated)
     }
