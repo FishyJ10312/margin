@@ -5,6 +5,8 @@
  import ArtDirection from './ArtDirection.svelte';
  import {defaultImageConfig,defaultFrameDesign,piProviders} from './types';
  import {isOpenAiImageApi} from './image-api-config';
+ import {captionFont,suggestionSettings} from './art-caption';
+ import type {FontOption} from './types';
  import { X, LoaderCircle, WandSparkles, RotateCcw } from '@lucide/svelte';
 
  import type { AiConfig, AiPhoto, AiState, FrameSuggestion, Photo, RenderSettings, PreviewResult,GeneratedArt,ChatGptDiagnostic,ChatGptState,ChatGptModel,PiCatalog } from './types';
@@ -52,6 +54,8 @@
  let chatgptDiagnostic:ChatGptDiagnostic|null=null;
  $: previewAspect=prepared?.geometry?`${prepared.geometry.canvasWidth} / ${prepared.geometry.canvasHeight}`:baseSettings.ratio?`${baseSettings.ratio.width} / ${baseSettings.ratio.height}`:`${photo.width} / ${photo.height}`;
  let problem = '';
+ // Free, instant suggestions rendered locally from the photo's own colours.
+ let localSuggestions:FrameSuggestion[]=[],localPreviews:Record<number,string>={},showAllLocal=false,captionFamily:string|null=null;
  let suggestions: FrameSuggestion[] = [];
  let previews:Record<number,string>={};
  $: localPreviewPending=resultReceived&&suggestions.some((_,i)=>!previews[i]);
@@ -61,11 +65,13 @@
  let generationProgress:HTMLDivElement|undefined;
  let generationFeedback:HTMLDivElement|undefined;
  let creativeBrief='',hasInitialized=false;
+ // No model is connected yet: a first step to take, not an error.
+ let needsSetup=false;
  $: generationKind=mode==='refine'?'refine':mode==='design'?'design':imageTarget==='frame'?'image':'sticker';
  onMount(() => { dialog.showModal(); void initialize(); });
  async function initialize(draft:AiConfig|null=null) {
   const run=++initialization;
-  loading=true;problem='';connectionProblem='';connectionChecking=false;chatgptReady=false;piReady=false;
+  loading=true;problem='';connectionProblem='';needsSetup=false;connectionChecking=false;chatgptReady=false;piReady=false;
   try {
    const [s,p]=await Promise.all([invoke<AiState>('get_ai_state'),invoke<AiPhoto>(mode==='refine'?'prepare_art_refinement':'prepare_ai_photo',{photoId:photo.id,settings:baseSettings})]);
    if(!alive||run!==initialization)return;
@@ -75,12 +81,27 @@
    // Older style cards must not silently constrain a new photo-led request.
    if(config.frameDesign.style!=='auto'){config.frameDesign.style='auto';config.frameDesign.placement='auto';config.designDensity='auto';}
    prepared=p;
+   if(mode==='design'&&!imageTask)void loadLocal(p,run);
    creativeBrief=completeFrame?config.frameDesign.notes:config.styleDirection;
    if(mode==='refine'&&!hasInitialized&&!initialConfig)creativeBrief=$t('保留当前主题，优化图案形状、大小、位置与布局，让照片成为视觉中心');
    hasInitialized=true;
    // A slow analysis-model catalog must not hide the image-generation selector.
    if(!imageTask&&(config.provider==='pi'||config.provider==='chatgpt'))void checkAnalysisConnection(config,run);
   }catch(error){if(alive&&run===initialization)problem=String(error);}finally{if(alive&&run===initialization)loading=false;}
+ }
+ async function loadLocal(p:AiPhoto,run:number){
+  const live=()=>alive&&run===initialization;
+  try{
+   if(captionFamily===null)captionFamily=captionFont((await invoke<FontOption[]>('list_fonts')).map(f=>f.family));
+   const list=await invoke<FrameSuggestion[]>('local_art_suggestions',{token:p.token,language:$language});
+   if(!live())return;
+   localSuggestions=list;localPreviews={};
+   for(let i=0;i<list.length;i++){
+    const r=await invoke<PreviewResult>('get_preview',{photoId:photo.id,settings:suggestionSettings(baseSettings,list[i],captionFamily)});
+    if(!live())return;
+    localPreviews={...localPreviews,[i]:r.dataUrl};
+   }
+  }catch{/* Local suggestions are a convenience; the model route still works. */}
  }
  async function checkAnalysisConnection(selected:AiConfig,run:number){
   const active=()=>alive&&run===initialization&&!imageTask;
@@ -90,13 +111,13 @@
     const c=await invoke<PiCatalog>('list_pi_models',{path:selected.piPath||null,provider:selected.piProvider||'openai',refresh:false});
     if(!active())return;
     piReady=c.connected&&c.models.some(m=>m.id===selected.model);
-    if(!piReady)connectionProblem=$t('请在模型配置中连接账户并选择可用模型');
+    if(!piReady){connectionProblem=$t('请在模型配置中连接账户并选择可用模型');needsSetup=true;};
    }else{
     const c=await invoke<ChatGptState>('get_chatgpt_state');if(!active())return;
     const account=c.accounts.find(a=>a.id===(selected.chatgptAccountId||c.activeId));
     chatgptLabel=account?.label||'';
     if(account?.connected&&account.planEnabled){const models=await invoke<ChatGptModel[]>('list_chatgpt_models',{accountId:account.id});if(!active())return;chatgptReady=models.some(m=>m.slug===selected.model);}
-    if(!chatgptReady)connectionProblem=$t('请在模型配置中连接账户并选择可用模型');
+    if(!chatgptReady){connectionProblem=$t('请在模型配置中连接账户并选择可用模型');needsSetup=true;};
    }
   }catch(error){if(active())connectionProblem=String(error);}finally{if(active())connectionChecking=false;}
  }
@@ -154,7 +175,7 @@
     if(!alive||cancelRequested)return;
     if(completeFrame){
      const g=prepared.geometry;if(!g?.photoBounds)throw $t('画布信息已更新，请重新打开智能配框');const b=g.photoBounds;
-     suggestions=[{title:$t(mode==='refine'?'艺术边框精修':'整幅艺术边框'),rationale:result.summary.slice(0,200),frameColor:baseSettings.frameColor,borderPercent:baseSettings.borderPercent,decoration:{...baseSettings.decoration,kind:'none'},artwork:{elements:[],frameImage:{imagePath:result.imagePath,opacity:1,reference:{width:1000,height:1000,x:b.x,y:b.y,photoWidth:b.width,photoHeight:b.height}}}}];
+     suggestions=[{title:$t(mode==='refine'?'艺术边框精修':'整幅艺术边框'),rationale:result.summary.slice(0,200),frameColor:baseSettings.frameColor,borderPercent:result.borderPercent??baseSettings.borderPercent,decoration:{...baseSettings.decoration,kind:'none'},artwork:{elements:[],frameImage:{imagePath:result.imagePath,opacity:1,...(result.material?{material:true}:{}),reference:{width:1000,height:1000,x:b.x,y:b.y,photoWidth:b.width,photoHeight:b.height}}}}];
     }else{
      suggestions=[{title:$t('手绘艺术边框'),rationale:result.summary.slice(0,200),frameColor:baseSettings.frameColor,borderPercent:baseSettings.borderPercent,decoration:baseSettings.decoration,artwork:{...baseSettings.artwork,elements:baseSettings.artwork?.elements||[],stickers:[{imagePath:result.imagePath,anchor:'bottom-left',scale:0.9,opacity:1,flipX:false}]}}];
     }
@@ -168,7 +189,7 @@
   generationPhase='preview';
   for(let i=0;i<suggestions.length;i++){
    if(previews[i])continue;
-   const s=suggestions[i];const result=await invoke<PreviewResult>('get_preview',{photoId:photo.id,settings:{...baseSettings,...s,watermark:{...baseSettings.watermark,kind:'none'}}});
+   const s=suggestions[i];const result=await invoke<PreviewResult>('get_preview',{photoId:photo.id,settings:s.artwork?.design?.id?.startsWith('art-')?suggestionSettings(baseSettings,s,captionFamily):{...baseSettings,...s,watermark:{...baseSettings.watermark,kind:'none'}}});
    if(!alive||cancelRequested)return;
    previews={...previews,[i]:result.dataUrl};
   }
@@ -193,17 +214,28 @@
   {#if loading}<p class="model-loading"><LoaderCircle size={17} class="spin" />{$t("准备照片与本机连接…")}</p>{:else}
   <div class="analysis-photo">{#if prepared}<img src={prepared.dataUrl} width="80" height="64" alt={$t("将交给模型分析的照片缩略图")}/><div><strong>{photo.name}</strong><p>{$t(mode==='refine'?'参考原照片和当前边框，调整后先预览':'保留照片与画布比例，设计只出现在留白区域')}</p></div>{/if}</div>
   {#if mode==='refine'&&prepared?.before&&!suggestions.length}<div class="refine-before"><img src={prepared.before} alt={$t('发送给模型的当前配框预览，不含水印')}/><p>{$t(imageTask?'根据当前边框重新绘制图案形状、大小与布局；本轮会使用一次生图额度。':'可调整线条形状、图案大小与位置，重新安排布局。PNG 素材可移动、缩放和翻转。')}</p></div>{/if}
+  {#if mode==='design'&&!imageTask&&localSuggestions.length}
+   <section class="local-styles" aria-label={$t('按照片配色的风格')}>
+    <header><h3>{$t('按这张照片配好的风格')}</h3><span>{$t('免费 · 不发送照片')}</span></header>
+    <div class="local-grid">{#each (showAllLocal?localSuggestions:localSuggestions.slice(0,6)) as s,i}<article>
+     <div class="local-image" style:aspect-ratio={previewAspect}>{#if localPreviews[i]}<img src={localPreviews[i]} alt={$t('{0} 的实际边框预览',{0:s.title})}/>{:else}<LoaderCircle size={15} class="spin"/>{/if}</div>
+     <h4>{s.title}</h4><p>{s.rationale}</p>
+     <div class="local-actions"><button class="button secondary compact" disabled={busy||!localPreviews[i]} on:click={()=>onapply(s)}>{$t('应用')}</button><button class="text-button" disabled={busy||!localPreviews[i]} on:click={()=>onsavetemplate(s)}>{$t('存为模板')}</button></div>
+    </article>{/each}</div>
+    {#if !showAllLocal&&localSuggestions.length>6}<button type="button" class="text-button" on:click={()=>showAllLocal=true}>{$t('显示全部 {0} 种',{0:localSuggestions.length})}</button>{/if}
+   </section>
+  {/if}
   <form aria-label={$t("艺术边框生成设置")} on:submit|preventDefault={generate}>
    <fieldset disabled={busy||generationLocked}><legend class="sr-only">{$t("艺术边框生成设置")}</legend>
     {#if mode !== 'refine'}
      <div class="generation-method">
       <label class="field-label" for="generation-method">{$t('生成方式')}</label>
       <select id="generation-method" value={generationKind} aria-describedby="generation-method-help" on:change={event=>changeGeneration(event.currentTarget.value)}>
-       <option value="design">{$t('分析配框 · 可编辑')}</option>
-       <option value="image">{$t('完整插画边框 · 生图')}</option>
+       <option value="design">{$t('艺术风格 · 本机渲染')}</option>
+       <option value="image">{$t('AI 绘制材质 · 生图')}</option>
        <option value="sticker">{$t('独立装饰素材 · 生图')}</option>
       </select>
-      <p id="generation-method-help" class="field-help">{$t(imageTask?'由下方生图服务绘制图片，Margin 将图案合成到照片留白处。':'根据照片生成可编辑的配框方案，Margin 在本机绘制线条和图案。')}</p>
+      <p id="generation-method-help" class="field-help">{$t(completeFrame&&config.frameDesign.material!=='none'?'生图服务只画一块装裱材质，Margin 在本机裁出照片开口，照片本身不会被改动。':imageTask?'由下方生图服务绘制图片，Margin 将图案合成到照片留白处。':'下面是按这张照片配好颜色的风格，免费、不发送照片。想要 AI 帮你挑选并起标题，再连接模型生成。')}</p>
      </div>
     {/if}
     <label class="field-label" for="style-direction">{$t(mode==='refine'?'这次想怎么调整？':'你的想法（可选）')}</label>
@@ -211,9 +243,12 @@
     <p id="brief-help" class="field-help">{$t('无需先选风格。你的描述优先，未指定的部分交给 AI。')}</p>
     <details class="generation-options"><summary>{$t('更多选项')}</summary><div class="generation-fields">
      {#if completeFrame}<ArtDirection bind:value={config.frameDesign} oninvalidate={()=>consent=false}/>{/if}
-     {#if mode==='design'||completeFrame}<label class="field-label" for="design-density">{$t('装饰密度')}</label><select id="design-density" bind:value={config.designDensity} on:change={()=>consent=false}><option value="auto">{$t('由 AI 根据照片决定')}</option><option value="simple">{$t('简约 · 少量点缀')}</option><option value="balanced">{$t('适中 · 线条与图案')}</option><option value="rich">{$t('丰富 · 更多交织与插画')}</option></select>{/if}
+     {#if completeFrame&&config.frameDesign.material==='none'}<label class="field-label" for="design-density">{$t('装饰密度')}</label><select id="design-density" bind:value={config.designDensity} on:change={()=>consent=false}><option value="auto">{$t('由 AI 根据照片决定')}</option><option value="simple">{$t('简约 · 少量点缀')}</option><option value="balanced">{$t('适中 · 线条与图案')}</option><option value="rich">{$t('丰富 · 更多交织与插画')}</option></select>{/if}
      {#if imageTask&&!completeFrame}<label class="model-consent"><input type="checkbox" bind:checked={reference} on:change={()=>consent=false}/><span>{$t('将上方照片作为风格参考（可选，默认不发送）')}</span></label>{/if}
     </div></details>
+    {#if !imageTask&&needsSetup}
+     <div class="setup-card" role="status"><p><strong>{$t('还没有连接模型')}</strong>{$t('上面的风格可以直接用。想让 AI 帮你挑选、配标题，用 ChatGPT 账号登录一次即可，无需 API Key。')}</p><button type="button" class="button primary compact" on:click={configure}>{$t(config.provider==='chatgpt'?'连接 ChatGPT':'打开模型配置')}</button></div>
+    {:else}
     <div class="connection-summary">
      <div>
       <strong>{imageTask?(config.image.provider==='codex'?$t('本机 Codex'):'GPT Image API'):connectionName}</strong>
@@ -229,7 +264,8 @@
     {/if}
     {#if !imageTask&&connectionChecking}<p class="field-help" role="status">{$t('正在检查分析模型连接… 可以先切换到生图。')}</p>{/if}
     <label class="model-consent"><input type="checkbox" bind:checked={consent} disabled={!generationReady}/><span>{completeFrame?$t(mode==='refine'?'同意发送照片与当前边框缩略图，生成一幅精修边框并使用 {0} 的生图额度':'同意发送这张照片的缩略图，生成一幅艺术边框并使用 {0} 的生图额度',{0:config.image.provider==='codex'?'Codex':config.image.model+' · '+config.image.baseUrl}):imageTask&&config.image.provider==='openai'?$t('同意向 {0} 发送设计方向{1}，使用 {2} 生成一张透明图片并消耗该 API 额度',{0:config.image.baseUrl,1:reference?$t('与参考缩略图'):'',2:config.image.model}):imageTask?$t(reference?'同意发送方向与参考缩略图，生成一张图片并使用 Codex 额度':'同意只发送设计方向，生成一张图片并使用 Codex 额度'):config.provider==='pi'?$t(mode==='refine'?'同意通过 {0} 发送原图与配框缩略图，使用 {1} 调用 {2} 精修一轮':'同意通过 {0} 发送此缩略图，使用 {1} 调用 {2} 分析配框',{0:connectionName,1:$t(piProviders.find(p=>p.id===(config.piProvider||'openai'))?.billing||'订阅用量'),2:config.model}):config.provider==='chatgpt'?$t(mode==='refine'?'同意向 OpenAI 发送原图与配框缩略图，使用 {0} 的 ChatGPT 授权用量调用 {1} 精修一轮':'同意向 OpenAI 发送此缩略图，使用 {0} 的 ChatGPT 授权用量调用 {1} 分析配框',{0:chatgptLabel||$t('当前账户'),1:config.model||$t('所选模型')}):mode==='refine'?$t('同意发送原图缩略图与当前配框预览，调用模型一轮并使用所选入口的额度'):config.provider==='codex'?$t("同意将这张缩略图交给当前登录的 Codex 处理，并使用其额度"):$t("同意向 {0} 发送这张缩略图，并使用我的 API 额度", {0:config.baseUrl || '所填接口'})}</span></label>
-    <button class="button primary full-width" type="submit" disabled={!consent||!prepared||busy||generationLocked||!generationReady}><WandSparkles size={15} />{$t(mode==='refine'?'精修一次':completeFrame?'生成边框':imageTask?'生成装饰素材':'生成三套边框建议')}</button>
+    <button class="button primary full-width" type="submit" disabled={!consent||!prepared||busy||generationLocked||!generationReady}><WandSparkles size={15} />{$t(mode==='refine'?'精修一次':completeFrame?'生成边框':imageTask?'生成装饰素材':'让 AI 挑选三套并起标题')}</button>
+    {/if}
    </fieldset>
   </form>
   {/if}
@@ -237,7 +273,7 @@
   {#if mode==='refine'&&suggestions.length&&prepared?.before}<div class="refine-comparison" bind:this={refinementComparison} aria-label={$t('精修前后对比')}><figure><figcaption>{$t('精修前')}</figcaption><img src={prepared.before} alt={$t('精修前的完整配框')} style:aspect-ratio={previewAspect} /></figure><figure><figcaption>{$t('精修后')}</figcaption>{#if previews[0]}<img src={previews[0]} alt={$t('精修后的完整配框')} style:aspect-ratio={previewAspect} />{:else}<div class="comparison-loading">{#if busy}<LoaderCircle size={18} class="spin"/>{$t('准备精修效果…')}{:else}{$t('预览未完成')}{/if}</div>{/if}</figure></div>{/if}
   {#if busy}<progress aria-label={$t('模型正在处理')}></progress><div class="model-loading" bind:this={generationProgress}><LoaderCircle size={17} class="spin" aria-hidden="true" /><div class="generation-progress-copy"><span role="status">{generationStatus}</span><span class="generation-elapsed" aria-hidden="true" data-elapsed-seconds={elapsedSeconds}>{$t('已等待 {0} 秒',{0:elapsedSeconds})}</span></div><button class="text-button" disabled={cancelRequested} on:click={cancelGeneration}>{$t("取消")}</button></div>{/if}
   {#if problem}<div bind:this={generationFeedback}><p class="model-problem" role="alert">{$t(problem)}</p>{#if !prepared && !loading}<button class="text-button" on:click={()=>initialize()}><RotateCcw size={13} />{$t("重新准备")}</button>{:else if !busy&&generationPhase==='preview'&&suggestions.length}<button id="retry-local-preview" type="button" class="button secondary" on:click={retryPreview}><RotateCcw size={13} />{$t('重试本机预览（不再次生图）')}</button>{#if mode!=='refine'&&localPreviewPending}<button type="button" class="text-button" on:click={startNewRound}>{$t('放弃本次结果，开启新一轮')}</button>{/if}{/if}</div>{/if}
-  {#if !imageTask&&connectionProblem}<p class="model-problem" role="alert">{$t(connectionProblem)}</p><button class="text-button" on:click={configure}>{$t('在模型配置中检查连接')}</button>{/if}
+  {#if !imageTask&&!needsSetup&&connectionProblem}<p class="model-problem" role="alert">{$t(connectionProblem)}</p><button class="text-button" on:click={configure}>{$t('在模型配置中检查连接')}</button>{/if}
   {#if problem&&!imageTask&&config.provider==='chatgpt'}<button class="text-button" on:click={configure}>{$t('在模型配置中检查连接')}</button>{/if}
   {#if problem&&chatgptDiagnostic}<details class="advanced-connection"><summary>{$t('连接诊断')}</summary><code>HTTP {chatgptDiagnostic.status} {chatgptDiagnostic.bodyShape} {chatgptDiagnostic.code||''} {chatgptDiagnostic.param||''} {chatgptDiagnostic.requestId||''}</code></details>{/if}
   {#if suggestions.length}<div class="art-suggestions" class:refine-result={mode==='refine'} class:complete-result={completeFrame} bind:this={resultContainer}>{#each suggestions as suggestion,i}<article>{#if mode!=='refine'}<div class="art-image">{#if previews[i]}<img src={previews[i]} alt={$t("{0} 的实际边框预览（不含水印）", {0:suggestion.title})}/>{:else if busy}<LoaderCircle size={17} class="spin" />{:else}<span class="field-help">{$t('预览未完成')}</span>{/if}</div>{/if}<div><h3>{suggestion.title}</h3><p>{suggestion.rationale}</p><button class="button secondary compact" disabled={busy||!previews[i]} on:click={()=>onapply(suggestion)}>{$t("应用到")} {count} {$t("张照片",{count})}</button><button class="text-button" disabled={busy||!previews[i]} on:click={()=>onsavetemplate(suggestion)}>{$t("保存为边框模板")}</button></div></article>{/each}</div>{/if}
@@ -246,6 +282,11 @@
 </dialog>
 
 <style>
+.local-styles{margin-block:4px 18px;}.local-styles>header{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-block-end:10px;}.local-styles h3{font-size:13px;font-weight:600;margin:0;}.local-styles header span{font-size:11px;color:var(--muted);}
+.local-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}@container(max-width:520px){.local-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+.local-grid article{display:grid;gap:5px;min-width:0;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--surface-soft);}.local-image{display:grid;place-items:center;max-height:150px;overflow:hidden;border-radius:4px;}.local-image img{display:block;width:100%;height:100%;object-fit:contain;}
+.local-grid h4{font-size:12px;font-weight:600;margin:2px 0 0;}.local-grid p{font-size:11px;line-height:1.55;color:var(--muted);margin:0;}.local-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px;}
+.setup-card{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-block:12px;padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:var(--surface-soft);font-size:12px;line-height:1.7;}.setup-card p{margin:0;}.setup-card strong{display:block;font-size:13px;}.setup-card .button{flex:none;}
 .generation-method{display:grid;gap:5px;margin-block:0 16px;}
 .generation-method select{width:100%;}
 .generation-progress-copy{display:grid;gap:3px;flex:1;min-width:0;}

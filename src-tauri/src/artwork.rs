@@ -306,6 +306,7 @@ pub fn draw_window(
     }
     if let Some(d) = &scene.design {
         crate::film::draw_window(canvas, d, l, ox, oy)?;
+        crate::art_styles::draw_window(canvas, d, l, ox, oy)?;
     }
     let mut elements = scene.elements.clone();
     if let Some(d) = &scene.design {

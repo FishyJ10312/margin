@@ -2,6 +2,7 @@
   import {t} from './lib/i18n';
   import {actualPhotoSettings,adoptOwnedAssets,frameStyleEdit,photoEdit,type ExplicitSettingsEdit,type PhotoEditPolicy} from './lib/photo-settings';
   import { onMount, onDestroy, tick } from 'svelte';
+  import {captionFont,captionWatermark} from './lib/art-caption';
   import { invoke } from '@tauri-apps/api/core';
   import { listen } from '@tauri-apps/api/event';
   import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
@@ -360,10 +361,14 @@
   let sessionApiKey = '',sessionApiOrigin='';
   let sessionImageApiKey='',sessionImageApiOrigin='';
   let previousArt: SettingsEdit | null = null;
+  // Dot, stripe and wave patterns are folded away; paper and linen lead.
+  const patternMotifs:FrameDecoration['kind'][]=['dots','lines','waves','corners'];
+  let showPatternMotifs=false;
   const motifs: {kind:FrameDecoration['kind'];name:string}[]=[{kind:'none',name:'纯色'},{kind:'paper',name:'纸感'},{kind:'linen',name:'亚麻'},{kind:'dots',name:'点阵'},{kind:'lines',name:'细条纹'},{kind:'waves',name:'柔波纹'},{kind:'corners',name:'角标'}];
   function applyArt(suggestion:FrameSuggestion) {
-    const next={...settings,frameColor:suggestion.frameColor,borderPercent:suggestion.borderPercent,decoration:clone(suggestion.decoration),artwork:clone(suggestion.artwork)};
-    performFrameEdit(next,{frameColor:next.frameColor,borderPercent:next.borderPercent,decoration:next.decoration,artwork:next.artwork});
+    const watermark=captionWatermark(settings.watermark,suggestion,captionFont(fonts.map(f=>f.family)));
+    const next={...settings,frameColor:suggestion.frameColor,borderPercent:suggestion.borderPercent,decoration:clone(suggestion.decoration),artwork:clone(suggestion.artwork),watermark:clone(watermark)};
+    performFrameEdit(next,{frameColor:next.frameColor,borderPercent:next.borderPercent,decoration:next.decoration,artwork:next.artwork,...(watermark!==settings.watermark?{watermark:next.watermark}:{})});
     modelOpen=false;stagedModelConfig=null;
   }
   function performFrameEdit(next:RenderSettings,explicit:ExplicitSettingsEdit,policy:PhotoEditPolicy={}){
@@ -1635,7 +1640,7 @@
         <details class="extra-colors"><summary>{$t('更多颜色')}</summary><div class="color-palette" role="group" aria-label={$t('更多颜色')}>{#each palette.slice(8) as [color,name]}<button style:background={color} class:active={settings.frameColor.toUpperCase()===color} class="palette-swatch" aria-label={`${$t(name)} ${color}`} aria-pressed={settings.frameColor.toUpperCase()===color} title={$t(name)} on:click={()=>setFrameColor(color)}></button>{/each}</div></details>
         {#if frameHexError}<p class="field-error">{$t(frameHexError)}</p>{/if}
         <details class="advanced-watermark motif-details"><summary><ChevronDown size={14} />{$t("纸张纹理")}</summary>
-          <div class="motif-grid" role="group" aria-label={$t("边框花纹")}>{#each motifs as motif}<button class:chosen={settings.decoration.kind===motif.kind} aria-pressed={settings.decoration.kind===motif.kind} on:click={()=>settings.decoration.kind=motif.kind}><PatternSwatch decoration={{...settings.decoration,kind:motif.kind}} background={settings.frameColor} /><span>{$t(motif.name)}</span></button>{/each}</div>
+          <div class="motif-grid" role="group" aria-label={$t("边框花纹")}>{#each motifs.filter(m=>showPatternMotifs||!patternMotifs.includes(m.kind)||settings.decoration.kind===m.kind) as motif}<button class:chosen={settings.decoration.kind===motif.kind} aria-pressed={settings.decoration.kind===motif.kind} on:click={()=>settings.decoration.kind=motif.kind}><PatternSwatch decoration={{...settings.decoration,kind:motif.kind}} background={settings.frameColor} /><span>{$t(motif.name)}</span></button>{/each}</div>{#if !showPatternMotifs}<button type="button" class="text-button" on:click={()=>showPatternMotifs=true}>{$t('更多花纹')}</button>{/if}
           {#if settings.decoration.kind!=='none'}
             <div class="field-title"><label class="field-label" for="motif-opacity">{$t("花纹强度")}</label><output>{Math.round(settings.decoration.opacity*100)}%</output></div><input id="motif-opacity" type="range" min="0" max="0.3" step="0.01" bind:value={settings.decoration.opacity} />
             <div class="field-title"><label class="field-label" for="motif-scale">{$t("花纹大小")}</label><output>{settings.decoration.scale.toFixed(1)}×</output></div><input id="motif-scale" type="range" min="0.5" max="3" step="0.1" bind:value={settings.decoration.scale} />
@@ -1654,7 +1659,7 @@
            <div class="field-title"><label for="art-size" class="field-label">{$t('装饰大小')}</label><output>{Math.round((settings.artwork.design.scale??1)*100)}%</output></div><input id="art-size" type="range" min="0.2" max="1" step="0.05" value={settings.artwork.design.scale??1} on:input={e=>{if(settings.artwork?.design)settings.artwork.design.scale=Number(e.currentTarget.value);}}/>
            <div class="color-row">{#each settings.artwork.design.colors as color,i}<input class="color-picker" type="color" aria-label={$t('艺术配色 {0}',{0:i+1})} value={color} on:input={e=>{if(settings.artwork?.design)settings.artwork.design.colors[i]=e.currentTarget.value;}}/>{/each}</div>
           {/if}
-          {#if settings.artwork.frameImage}<p class="field-help">{$t('插画随四边与四角等比铺满，边缘可能裁切；照片始终完整保留。')}</p><div class="field-title"><label class="field-label" for="frame-art-opacity">{$t('插画透明度')}</label><output>{Math.round(settings.artwork.frameImage.opacity*100)}%</output></div><input id="frame-art-opacity" type="range" min="0" max="1" step="0.01" bind:value={settings.artwork.frameImage.opacity}/>{/if}
+          {#if settings.artwork.frameImage}<p class="field-help">{settings.artwork.frameImage.material?$t('材质铺满整个边框，照片压在上面，边缘带一点自然投影。'):$t('插画随四边与四角等比铺满，边缘可能裁切；照片始终完整保留。')}</p><div class="field-title"><label class="field-label" for="frame-art-opacity">{$t('插画透明度')}</label><output>{Math.round(settings.artwork.frameImage.opacity*100)}%</output></div><input id="frame-art-opacity" type="range" min="0" max="1" step="0.01" bind:value={settings.artwork.frameImage.opacity}/>{/if}
           {#each settings.artwork.stickers||[] as sticker,i}
            <label class="field-label" for={'sticker-position-'+i}>{$t('手绘素材位置')}</label><select id={'sticker-position-'+i} bind:value={sticker.anchor}>{#each positions.filter(p=>p.value.startsWith('top')||p.value.startsWith('bottom')) as p}<option value={p.value}>{$t(p.label)}</option>{/each}</select>
            <div class="field-title"><label class="field-label" for={'sticker-size-'+i}>{$t('素材大小')}</label><output>{Math.round(sticker.scale*100)}%</output></div><input id={'sticker-size-'+i} type="range" min="0.2" max="1" step="0.01" bind:value={sticker.scale}/>

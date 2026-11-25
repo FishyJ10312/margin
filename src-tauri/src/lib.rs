@@ -7,6 +7,8 @@ static IMAGE_ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 mod app_models;
 pub mod art_ai;
 pub mod art_direction;
+pub mod art_director;
+pub mod art_styles;
 pub mod artwork;
 pub mod backdrop;
 pub mod camera_info;
@@ -405,6 +407,7 @@ async fn prepare_art_refinement(
             frame_color: settings.frame_color,
             border_percent: settings.border_percent,
             decoration: settings.decoration,
+            caption: String::new(),
             artwork: settings.artwork.unwrap_or_default(),
         };
         ai.prepare_refinement(data, w, h, geometry, before, current)
@@ -440,6 +443,14 @@ async fn generate_complete_frame(
     state
         .complete_frame(&token, config, api_key.unwrap_or_default())
         .await
+}
+#[tauri::command]
+fn local_art_suggestions(
+    token: String,
+    language: String,
+    state: State<'_, Arc<art_ai::ArtAi>>,
+) -> Result<Vec<art_ai::FrameSuggestion>, String> {
+    state.local_suggestions(&token, &language)
 }
 #[tauri::command]
 async fn generate_art_frames(
@@ -605,6 +616,7 @@ pub fn run() {
             prepare_art_refinement,
             generate_handdrawn,
             generate_complete_frame,
+            local_art_suggestions,
             list_image_models,
             save_ai_config,
             cancel_art_frames,

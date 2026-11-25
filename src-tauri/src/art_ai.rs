@@ -90,6 +90,9 @@ pub struct FrameSuggestion {
     pub border_percent: f64,
     pub decoration: FrameDecoration,
     pub artwork: crate::artwork::ArtScene,
+    /// A short title the art director suggests printing under the photo.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub caption: String,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -166,6 +169,18 @@ impl ArtAi {
         p.current = Some(current);
         *self.photo.lock().map_err(|_| "无法准备精修预览")? = Some(p.clone());
         Ok(p)
+    }
+    /// Free, instant style suggestions coloured from the prepared thumbnail.
+    pub fn local_suggestions(&self, token: &str, language: &str) -> Result<Vec<FrameSuggestion>, String> {
+        let photo = self
+            .photo
+            .lock()
+            .map_err(|_| "无法读取参考缩略图")?
+            .as_ref()
+            .filter(|p| p.token == token)
+            .cloned()
+            .ok_or("缩略图已更新，请重新打开智能配框")?;
+        crate::art_director::local(&photo.data_url, language)
     }
     pub fn state(&self) -> Result<AiState, String> {
         let mut config: AiConfig = fs::read(self.directory.join("model-settings.json"))
@@ -271,6 +286,7 @@ impl ArtAi {
             *self.cancel.lock().map_err(|_| "无法取消模型任务")? = None;
             return Err("已取消模型请求；请重新准备缩略图后手动重试".into());
         }
+        let material = frame && crate::art_direction::material(&config.frame_design).is_some();
         let work = async {
             let frame_direction = if config.frame_design.notes.trim().is_empty() {
                 "根据照片的内容、构图与色彩，自主设计一幅有明确创意和视觉层次的边框，照片是视觉中心"
@@ -296,6 +312,7 @@ impl ArtAi {
                         &photo,
                         &self.directory,
                         &prompt,
+                        material,
                     )
                     .await;
                 }
@@ -329,9 +346,14 @@ impl ArtAi {
         if let Ok(mut c) = self.cancel.lock() {
             *c = None;
         }
-        let generated = result?;
-        if frame {
+        let mut generated = result?;
+        if material {
+            crate::frame_art::validate_material(&generated.image_path)?;
+            generated.material = true;
+        } else if frame {
             crate::frame_art::validate_generated(&generated.image_path)?;
+            generated.border_percent =
+                crate::frame_art::fitting_border_percent(&generated.image_path, photo.width, photo.height);
         }
         Ok(generated)
     }
@@ -416,6 +438,10 @@ impl ArtAi {
         result.map(|mut suggestions| {
             if let Some(g) = &photo.geometry {
                 for s in &mut suggestions {
+                    // Directed styles carry the margin they need to read.
+                    if crate::art_director::is_director(s) {
+                        continue;
+                    }
                     s.border_percent = g.border_percent;
                     s.artwork.reference = Some(crate::artwork::ArtReference {
                         width: g.canvas_width,
@@ -548,26 +574,30 @@ fn codex_login_status(path: &Path) -> bool {
         }
     }
 }
-fn schema() -> Value {
-    let number = json!({"type":"number"});
-    let element = json!({"type":"object","additionalProperties":false,"properties":{
- "kind":{"type":"string","enum":["curve","polyline","star","sparkle","heart","cloud","leaf","fish","cat","flower","circle"]},"x":number,"y":number,"width":number,"height":number,"rotation":number,"color":{"type":"string"},"opacity":number,"strokeWidth":number,"filled":{"type":"boolean"},"points":{"type":"array","maxItems":16,"items":{"type":"array","minItems":2,"maxItems":2,"items":number}}},"required":["kind","x","y","width","height","rotation","color","opacity","strokeWidth","filled","points"]});
-    json!({"type":"object","additionalProperties":false,"properties":{"suggestions":{"type":"array","minItems":3,"maxItems":3,"items":{"type":"object","additionalProperties":false,"properties":{"title":{"type":"string"},"rationale":{"type":"string"},"frameColor":{"type":"string"},"borderPercent":number,"decoration":{"type":"object","additionalProperties":false,"properties":{"kind":{"type":"string","enum":["none","paper","linen","dots","lines","waves","corners"]},"color":{"type":"string"},"opacity":number,"scale":number},"required":["kind","color","opacity","scale"]},"artwork":{"type":"object","additionalProperties":false,"properties":{"elements":{"type":"array","minItems":1,"maxItems":36,"items":element}},"required":["elements"]}},"required":["title","rationale","frameColor","borderPercent","decoration","artwork"]}}},"required":["suggestions"]})
+/// New designs and refinements of them go through the art director; only
+/// refinements of older hand-placed vector designs keep the geometry editor.
+fn directed(p: &AiPhoto) -> bool {
+    p.current
+        .as_ref()
+        .is_none_or(crate::art_director::is_director)
 }
 fn task_schema(p: &AiPhoto) -> Value {
-    if p.current.is_none() {
-        return schema();
+    if directed(p) {
+        return crate::art_director::schema(if p.current.is_some() { 1 } else { 3 });
     }
     crate::refinement::schema()
 }
 fn parse_task(text: &str, p: &AiPhoto) -> Result<Vec<FrameSuggestion>, String> {
-    if p.current.is_some() {
-        crate::refinement::parse(text, p)
+    if directed(p) {
+        crate::art_director::parse(text, p)
     } else {
-        parse_suggestions(text)
+        crate::refinement::parse(text, p)
     }
 }
 fn design_prompt(c: &AiConfig, p: &AiPhoto) -> Result<String, String> {
+    if directed(p) {
+        return crate::art_director::prompt(c, p);
+    }
     if p.current.is_some() {
         return crate::refinement::prompt(c, p);
     }
@@ -816,11 +846,11 @@ mod tests {
             }),
         };
         let text = design_prompt(&AiConfig::default(), &p).unwrap();
-        assert!(text.contains("4300×5375"));
-        assert!(text.contains("930"));
-        assert!(text.contains("5%"));
-        assert!(text.contains("严禁装饰"));
-        assert!(!text.contains("y=8–65"));
+        // New designs are directed: the model picks and colours Margin's own
+        // styles, which adapt to the real canvas locally, so it gets no
+        // coordinates to place by hand.
+        assert!(text.contains("STYLE CATALOGUE") && text.contains("art-cyanotype"));
+        assert!(!text.contains("4300×5375") && !text.contains("严禁装饰"));
     }
 
     use super::*;
@@ -925,7 +955,7 @@ mod tests {
         use std::net::TcpListener;
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
-        let answer = json!({"choices":[{"message":{"content":valid()}}]}).to_string();
+        let answer = json!({"choices":[{"message":{"content":crate::art_director::fixture()}}]}).to_string();
         let server = std::thread::spawn(move || {
             let (mut socket, _) = listener.accept().unwrap();
             socket
@@ -1027,7 +1057,7 @@ mod tests {
         let script = dir.path().join("codex-fixture");
         let args_file = dir.path().join("args.txt");
         // The fixture stands in for the CLI. It exercises argv and output-file handling only.
-        let source=format!("#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'\nwhile [ \"$#\" -gt 0 ]; do if [ \"$1\" = '--output-last-message' ]; then shift; out=$1; fi; shift; done\nprintf '%s' '{}' > \"$out\"\n",args_file.display(),valid());
+        let source=format!("#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'\nwhile [ \"$#\" -gt 0 ]; do if [ \"$1\" = '--output-last-message' ]; then shift; out=$1; fi; shift; done\nprintf '%s' '{}' > \"$out\"\n",args_file.display(),crate::art_director::fixture());
         fs::write(&script, source).unwrap();
         fs::set_permissions(&script, fs::Permissions::from_mode(0o700)).unwrap();
         let c = AiConfig {
@@ -1094,6 +1124,7 @@ p.write_text(json.dumps({'suggestions':[{'title':'Refined','rationale':'Changed 
                 frame_color: s.frame_color,
                 border_percent: s.border_percent,
                 decoration: s.decoration,
+                caption: String::new(),
                 artwork: s.artwork.unwrap(),
             }),
         };

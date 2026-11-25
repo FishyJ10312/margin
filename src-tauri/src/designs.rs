@@ -30,7 +30,16 @@ pub struct BuiltinFrame {
     pub settings: RenderSettings,
     pub thumbnail: String,
 }
-const SPECS: [(&str, &str, &str, &str, &str, &str, [&str; 3]); 34] = [
+const SPECS: [(&str, &str, &str, &str, &str, &str, [&str; 3]); 43] = [
+    ("art-museum","美术馆卡纸","Museum Mat","art","厚卡纸与斜切内缘，上左受光、下右落影，像装裱好挂上墙的作品。","#F3F0E8",["#3B3833","#B9B1A2","#D9D3C6"]),
+    ("art-editorial","杂志版式","Editorial","art","宽留白与照片下方一道细线，适合在下边写标题和拍摄参数。","#EFEDE7",["#2D2B27","#8C877C","#D8D3C8"]),
+    ("art-field","照片色场","Colour Field","art","取照片里最深沉的颜色铺满边框，一道细线收住照片。","#3A1A10",["#C9A27A","#B96736","#E6C19E"]),
+    ("art-deckle","手撕相纸","Deckle Print","art","照片印在毛边相纸上，放在深色台面，带一点自然的投影。","#232220",["#2B2A27","#F1ECE1","#8D877B"]),
+    ("art-ink","水墨笔触","Ink Brush","art","一笔干刷的墨色贴着照片走，越往外越飞白。","#F5F1E8",["#1E1D1B","#5B5852","#A39E94"]),
+    ("art-cyanotype","蓝晒","Cyanotype","art","普鲁士蓝药膜刷在水彩纸上，边缘留着刷痕。","#F3F1EA",["#163A6B","#3E6EA5","#C8D6E6"]),
+    ("art-wash","水彩晕染","Watercolour Wash","art","角落化开的水彩，边缘积色、带颗粒，照片周围留一圈干净纸面。","#F7F2E8",["#C98B5B","#7F9C96","#D9A9A0"]),
+    ("art-collage","手撕纸拼贴","Torn Collage","art","几片撕开的色纸叠在两角，露出白色纸芯。","#F2EEE6",["#C2553E","#2F4F5F","#D9B77E"]),
+    ("art-botanical","植物线描","Botanical Line","art","细线勾出的枝叶沿边框生长，只占两个角。","#F7F3EA",["#7A4A32","#9B7A5A","#C9B79C"]),
     (
         "gallery",
         "摄影画廊",
@@ -368,6 +377,7 @@ pub fn settings(id: &str) -> Option<RenderSettings> {
         "scan-65mm" | "scan-carrier" => 15.,
         "scan-half" | "scan-super16" => 13.,
         id if crate::film::is_scan(id) => 12.,
+        id if crate::art_styles::is_art(id) => crate::art_styles::default_border(id),
         _ => 18.,
     };
     v.frame_color = s.5.into();
@@ -383,6 +393,8 @@ pub fn settings(id: &str) -> Option<RenderSettings> {
     });
     Some(v)
 }
+/// Pattern-led templates kept for existing users but no longer featured.
+const FOLDED: [&str; 7] = ["color-band", "corner-blocks", "pinstripe", "tidal", "ribbon", "lunar", "orbit"];
 pub fn library() -> Result<Vec<BuiltinFrame>, String> {
     static CACHE: std::sync::OnceLock<Vec<BuiltinFrame>> = std::sync::OnceLock::new();
     if let Some(c) = CACHE.get() {
@@ -396,7 +408,8 @@ pub fn library() -> Result<Vec<BuiltinFrame>, String> {
             id: s.0.into(),
             name: s.1.into(),
             english_name: s.2.into(),
-            category: s.3.into(),
+            // Dot, stripe and wave patterns stay available, folded under "more".
+            category: if FOLDED.contains(&s.0) { "more" } else { s.3 }.into(),
             description: s.4.into(),
             settings,
             thumbnail,

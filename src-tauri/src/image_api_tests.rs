@@ -190,6 +190,7 @@ fn complete_frame_keeps_canvas_and_sends_both_refinement_references_once() {
         &photo,
         d.path(),
         "Detailed full frame, precise empty photograph window, revised motif layout",
+        false,
     ))
     .unwrap();
     let (headers, body) = rx.recv().unwrap();
@@ -207,6 +208,14 @@ fn complete_frame_keeps_canvas_and_sends_both_refinement_references_once() {
         .contains("precise empty photograph window"));
     assert_eq!((result.width, result.height), (101, 79));
     assert!(crate::stickers::load_frame(&result.image_path).is_ok());
+    // A material is a solid square sample whatever the canvas shape.
+    let body=json!({"data":[{"b64_json":base64::engine::general_purpose::STANDARD.encode(png.get_ref())}]}).to_string().into_bytes();
+    let (url, rx, thread) = mock(200, body);
+    let c = ImageConfig { base_url: url, ..c };
+    tauri::async_runtime::block_on(run_frame(&c, "linen", "en", "fixture-key", &photo, d.path(), "Fine linen", true)).unwrap();
+    let (_, body) = rx.recv().unwrap();
+    thread.join().unwrap();
+    assert_eq!((body["size"].as_str(), body["background"].as_str()), (Some("1024x1024"), Some("opaque")));
 }
 #[test]
 fn optional_reference_uses_edits_without_changing_vision_model() {

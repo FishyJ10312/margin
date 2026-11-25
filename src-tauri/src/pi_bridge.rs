@@ -591,7 +591,7 @@ elif m['operation']=='infer':
     if m['model']=='auth-error': send({'type':'error','code':'auth','message':'SYNTHETIC_SECRET_NEVER_SHOW'})
     elif m['model']=='oversize': print('x'*(2*1024*1024),flush=True)
     else:
-        suggestion={'title':'Pi fixture','rationale':'Local fake process','frameColor':'#F3ECDD','borderPercent':5,'decoration':{'kind':'none','color':'#567890','opacity':0,'scale':1},'artwork':{'elements':[{'kind':'curve','x':0,'y':0,'width':100,'height':100,'rotation':0,'color':'#345678','opacity':0.8,'strokeWidth':1,'filled':False,'points':[[10,20],[200,40],[700,30],[990,20]]}]}}
+        suggestion={'style':'art-museum','title':'Pi fixture','rationale':'Local fake process','caption':'','frameColor':'#F3ECDD','colors':['#2B2A27','#B9B1A2','#D9D3C6'],'borderPercent':14,'intensity':1,'scale':1}
         send({'type':'result','value':{'text':json.dumps({'suggestions':[suggestion]*3})}})
 else: send({'type':'result','value':catalog})
 "###;

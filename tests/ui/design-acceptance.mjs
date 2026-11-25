@@ -29,10 +29,13 @@ assert.equal(calls[0].args.config.frameDesign.style,'auto','A legacy film choice
 assert.equal(calls[0].args.config.frameDesign.placement,'auto');
 assert.equal(calls[0].args.config.designDensity,'auto');
 assert.equal(calls[0].args.config.frameDesign.notes,'','An empty brief must remain valid');
+assert.equal(calls[0].args.config.frameDesign.material,'auto','By default the model paints a material and Margin cuts the opening');
 await page.fill('#style-direction','A quiet botanical border, no film marks');
 assert.equal(await page.evaluate(()=>document.querySelector('.model-dialog form > fieldset > .model-consent input').checked),false,'Editing a brief must invalidate the previous consent');
 await page.focus('.generation-options > summary');
 await page.press('.generation-options > summary','Enter');
+assert.equal(await page.evaluate(()=>document.querySelectorAll('#art-placement').length),0,'Placement only applies to a full illustrated frame');
+await page.selectOption('#art-material','none');
 await page.selectOption('#art-placement','bottom');
 await page.selectOption('#art-palette','mono');
 await page.selectOption('#design-density','rich');

@@ -210,6 +210,7 @@ pub async fn run_frame(
     photo: &AiPhoto,
     directory: &Path,
     prompt: &str,
+    material: bool,
 ) -> Result<GeneratedArt, String> {
     run_task(
         c,
@@ -218,7 +219,7 @@ pub async fn run_frame(
         key,
         Some(photo),
         directory,
-        Some(prompt),
+        Some((prompt, material)),
     )
     .await
 }
@@ -229,8 +230,10 @@ async fn run_task(
     key: &str,
     photo: Option<&AiPhoto>,
     directory: &Path,
-    frame_prompt: Option<&str>,
+    frame: Option<(&str, bool)>,
 ) -> Result<GeneratedArt, String> {
+    let frame_prompt = frame.map(|f| f.0);
+    let material = frame.is_some_and(|f| f.1);
     validate(c)?;
     if c.provider != "openai" {
         return Err("请选择 GPT 图像 API".into());
@@ -255,7 +258,11 @@ async fn run_task(
     let mut body = request_body(c, direction, photo);
     if let Some(prompt) = frame_prompt {
         body["prompt"] = prompt.into();
-        if let Some(geometry) = photo.and_then(|p| p.geometry.as_ref()) {
+        if material {
+            // A surface sample: square and solid; Margin cuts the opening.
+            body["size"] = "1024x1024".into();
+            body["background"] = "opaque".into();
+        } else if let Some(geometry) = photo.and_then(|p| p.geometry.as_ref()) {
             use std::cmp::Ordering;
             body["size"] = match geometry.canvas_width.cmp(&geometry.canvas_height) {
                 Ordering::Less => "1024x1536",

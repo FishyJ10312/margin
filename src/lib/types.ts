@@ -168,11 +168,12 @@ export interface ColorSample { x: number; y: number; hex: string; patchDataUrl: 
 export interface FrameBackground {kind:'color'|'blur';blur:number;dim:number}
 export const defaultBackground:FrameBackground={kind:'color',blur:0.6,dim:0.15};
 export interface FrameDecoration {kind:'none'|'paper'|'linen'|'dots'|'lines'|'waves'|'corners';color:string;opacity:number;scale:number}
-export interface FrameSuggestion {title:string;rationale:string;frameColor:string;borderPercent:number;decoration:FrameDecoration;artwork:ArtScene}
+export interface FrameSuggestion {title:string;rationale:string;frameColor:string;borderPercent:number;decoration:FrameDecoration;artwork:ArtScene;caption?:string}
 export interface ImageConfig {provider:'codex'|'openai';baseUrl:string;model:string;quality:'low'|'medium'|'high';size:'1024x1024'|'1536x1024'|'1024x1536';codexModel:string}
 export const defaultImageConfig:ImageConfig={provider:'codex',baseUrl:'https://api.openai.com/v1',model:'gpt-image-2.5-flare',quality:'medium',size:'1024x1024',codexModel:''};
-export interface FrameDesign {style:'auto'|'graphic'|'editorial'|'film'|'linework'|'collage'|'illustration'|'custom';placement:'auto'|'corners'|'sides'|'bottom';palette:'photo'|'mono'|'custom';colors:string[];texture:boolean;notes:string}
-export const defaultFrameDesign:FrameDesign={style:'auto',placement:'auto',palette:'photo',colors:['#315D69','#C27B5E','#D6C3A0'],texture:false,notes:''};
+export interface FrameDesign {style:'auto'|'graphic'|'editorial'|'film'|'linework'|'collage'|'illustration'|'custom';placement:'auto'|'corners'|'sides'|'bottom';palette:'photo'|'mono'|'custom';colors:string[];texture:boolean;notes:string;material:FrameMaterial}
+export type FrameMaterial='auto'|'paper'|'washi'|'linen'|'wash'|'marble'|'plaster'|'gilded'|'none';
+export const defaultFrameDesign:FrameDesign={style:'auto',placement:'auto',palette:'photo',colors:['#315D69','#C27B5E','#D6C3A0'],texture:false,notes:'',material:'auto'};
 export interface AiConfig {frameDesign:FrameDesign;image:ImageConfig;provider:'pi'|'chatgpt'|'codex'|'api';piProvider?:string;piPath?:string|null;chatgptAccountId?:string|null;baseUrl:string;model:string;codexPath:string|null;styleDirection:string;designDensity:'auto'|'simple'|'balanced'|'rich';language?:'zh-CN'|'en'}
 export const defaultAiConfig:AiConfig={frameDesign:{...defaultFrameDesign,colors:[...defaultFrameDesign.colors]},image:{...defaultImageConfig},provider:'chatgpt',piProvider:'openai',piPath:null,chatgptAccountId:null,baseUrl:'',model:'',codexPath:null,styleDirection:'',designDensity:'auto'};
 export const piProviders=[{id:'openai',name:'OpenAI / ChatGPT',billing:'ChatGPT 订阅用量'},{id:'anthropic',name:'Claude Pro / Max',billing:'Claude 订阅用量'},{id:'github-copilot',name:'GitHub Copilot',billing:'Copilot 套餐用量'},{id:'openrouter',name:'OpenRouter',billing:'OpenRouter 账户余额'}];
@@ -195,9 +196,9 @@ export interface WatermarkDetail {dataUrl:string;viewWidth:number;viewHeight:num
 export interface ArtElement {kind:string;x:number;y:number;width:number;height:number;rotation:number;color:string;opacity:number;strokeWidth:number;filled:boolean;points:[number,number][]}
 export interface DesignRecipe {id:string;colors:string[];intensity:number;scale?:number;film?:{labels:boolean;texture:number}|null}
 export interface Sticker {imagePath:string;anchor:string;scale:number;opacity:number;flipX?:boolean}
-export interface FrameImage {imagePath:string;reference:{width:number;height:number;x:number;y:number;photoWidth:number;photoHeight:number};opacity:number}
+export interface FrameImage {imagePath:string;reference:{width:number;height:number;x:number;y:number;photoWidth:number;photoHeight:number};opacity:number;material?:boolean}
 export interface ArtScene {elements:ArtElement[];design?:DesignRecipe|null;reference?:unknown;stickers?:Sticker[];frameImage?:FrameImage|null}
 export interface BuiltinFrame {id:string;name:string;englishName:string;category:string;description:string;settings:RenderSettings;thumbnail:string}
-export interface GeneratedArt {imagePath:string;thumbnail:string;width:number;height:number;summary:string}
+export interface GeneratedArt {imagePath:string;thumbnail:string;width:number;height:number;summary:string;borderPercent?:number;material?:boolean}
 
 export interface FrameTemplate {id:string;name:string;settings:RenderSettings;thumbnail:string}
