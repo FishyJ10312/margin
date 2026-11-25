@@ -98,5 +98,18 @@
   "角落化开的水彩，边缘积色、带颗粒，照片周围留一圈干净纸面。": "Watercolour blooms in the corners with pooled, granulating edges and a clean margin around the photo.",
   "几片撕开的色纸叠在两角，露出白色纸芯。": "Torn pieces of coloured paper layered at two corners, showing their white core.",
   "细线勾出的枝叶沿边框生长，只占两个角。": "Fine line-drawn leaves and stems grow along the border from two corners.",
-  "更多花纹": "More patterns"
+  "更多花纹": "More patterns",
+  "画什么": "What the model paints",
+  "一种装裱材质（由 AI 按照片挑选）": "A mounting material (AI picks one for the photo)",
+  "手工棉纸": "Handmade cotton paper",
+  "和纸": "Washi paper",
+  "亚麻布": "Bookbinding linen",
+  "水彩晕染": "Watercolour wash",
+  "流墨大理石纹纸": "Marbled paper",
+  "手抹灰泥": "Hand-troweled plaster",
+  "哑光金箔": "Matte gilded leaf",
+  "整幅插画边框（实验）": "Full illustrated frame (experimental)",
+  "模型自己画出照片开口，可能与照片尺寸不完全对齐。": "The model draws the photo opening itself, so it may not line up exactly with your photo.",
+  "模型只画一块材质，照片开口由 Margin 在本机精确裁出，换比例也不会变形。": "The model paints only a material. Margin cuts the photo opening exactly on your device, so changing the ratio never distorts it.",
+  "材质铺满整个边框，照片压在上面，边缘带一点自然投影。": "The material fills the whole border and the photo sits on top with a soft natural shadow."
 }

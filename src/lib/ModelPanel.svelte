@@ -173,7 +173,7 @@
     if(!alive||cancelRequested)return;
     if(completeFrame){
      const g=prepared.geometry;if(!g?.photoBounds)throw $t('画布信息已更新，请重新打开智能配框');const b=g.photoBounds;
-     suggestions=[{title:$t(mode==='refine'?'艺术边框精修':'整幅艺术边框'),rationale:result.summary.slice(0,200),frameColor:baseSettings.frameColor,borderPercent:result.borderPercent??baseSettings.borderPercent,decoration:{...baseSettings.decoration,kind:'none'},artwork:{elements:[],frameImage:{imagePath:result.imagePath,opacity:1,reference:{width:1000,height:1000,x:b.x,y:b.y,photoWidth:b.width,photoHeight:b.height}}}}];
+     suggestions=[{title:$t(mode==='refine'?'艺术边框精修':'整幅艺术边框'),rationale:result.summary.slice(0,200),frameColor:baseSettings.frameColor,borderPercent:result.borderPercent??baseSettings.borderPercent,decoration:{...baseSettings.decoration,kind:'none'},artwork:{elements:[],frameImage:{imagePath:result.imagePath,opacity:1,...(result.material?{material:true}:{}),reference:{width:1000,height:1000,x:b.x,y:b.y,photoWidth:b.width,photoHeight:b.height}}}}];
     }else{
      suggestions=[{title:$t('手绘艺术边框'),rationale:result.summary.slice(0,200),frameColor:baseSettings.frameColor,borderPercent:baseSettings.borderPercent,decoration:baseSettings.decoration,artwork:{...baseSettings.artwork,elements:baseSettings.artwork?.elements||[],stickers:[{imagePath:result.imagePath,anchor:'bottom-left',scale:0.9,opacity:1,flipX:false}]}}];
     }

@@ -15,6 +15,9 @@ pub struct GeneratedArt {
     /// band thickness fits the photograph, so applying it never squeezes motifs.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub border_percent: Option<f64>,
+    /// A solid surface with no opening; Margin cuts the photograph in.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub material: bool,
 }
 
 pub(crate) async fn save_png(
@@ -83,6 +86,7 @@ async fn save(
             height,
             summary,
             border_percent: None,
+            material: false,
         })
     })
     .await

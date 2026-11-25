@@ -286,6 +286,7 @@ impl ArtAi {
             *self.cancel.lock().map_err(|_| "无法取消模型任务")? = None;
             return Err("已取消模型请求；请重新准备缩略图后手动重试".into());
         }
+        let material = frame && crate::art_direction::material(&config.frame_design).is_some();
         let work = async {
             let frame_direction = if config.frame_design.notes.trim().is_empty() {
                 "根据照片的内容、构图与色彩，自主设计一幅有明确创意和视觉层次的边框，照片是视觉中心"
@@ -311,6 +312,7 @@ impl ArtAi {
                         &photo,
                         &self.directory,
                         &prompt,
+                        material,
                     )
                     .await;
                 }
@@ -345,7 +347,10 @@ impl ArtAi {
             *c = None;
         }
         let mut generated = result?;
-        if frame {
+        if material {
+            crate::frame_art::validate_material(&generated.image_path)?;
+            generated.material = true;
+        } else if frame {
             crate::frame_art::validate_generated(&generated.image_path)?;
             generated.border_percent =
                 crate::frame_art::fitting_border_percent(&generated.image_path, photo.width, photo.height);

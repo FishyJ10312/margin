@@ -9,6 +9,9 @@ pub struct FrameDesign {
     pub colors: Vec<String>,
     pub texture: bool,
     pub notes: String,
+    /// What the image model paints. Anything but "none" asks for one opaque
+    /// surface that Margin cuts the photograph opening into locally.
+    pub material: String,
 }
 impl Default for FrameDesign {
     fn default() -> Self {
@@ -19,6 +22,7 @@ impl Default for FrameDesign {
             colors: vec!["#315D69".into(), "#C27B5E".into(), "#D6C3A0".into()],
             texture: false,
             notes: String::new(),
+            material: "auto".into(),
         }
     }
 }
@@ -37,6 +41,7 @@ pub fn validate(d: &FrameDesign) -> Result<(), String> {
         d.placement.as_str(),
         "auto" | "corners" | "sides" | "bottom"
     ) || !matches!(d.palette.as_str(), "photo" | "mono" | "custom")
+        || !MATERIALS.iter().any(|(id, _)| *id == d.material)
         || d.colors.len() != 3
         || d.notes.chars().count() > 1500
     {
@@ -46,6 +51,25 @@ pub fn validate(d: &FrameDesign) -> Result<(), String> {
         crate::imaging::parse_color(c)?;
     }
     Ok(())
+}
+/// Surfaces the image model may paint, each described as a physical material
+/// rather than a picture, so the result reads as a real mount around the print.
+pub const MATERIALS: &[(&str, &str)] = &[
+    ("auto", "Choose ONE physical surface that suits this photograph, such as handmade cotton paper, washi with long fibres, fine linen, a soft watercolour wash, suminagashi marbling, aged plaster, raw silk or matte gilded leaf. Pick what a gallery framer would choose for this print."),
+    ("paper", "Heavy handmade cotton rag paper: soft deckle-like fibre clumps, gentle tooth, tiny natural inclusions, warm off-white or a pale tint taken from the photo."),
+    ("washi", "Japanese washi paper: translucent layered kozo fibres, long visible strands, faint mottling in a pale tint from the photo."),
+    ("linen", "Fine bookbinding linen: tight even weave, subtle slub threads, matte, dyed in a muted colour taken from the photo."),
+    ("wash", "A loose watercolour wash on cold-pressed paper: two or three photo colours bleeding softly into each other, granulation and soft blooms, no recognisable objects."),
+    ("marble", "Suminagashi or Turkish marbled paper: slow concentric ink currents in two or three restrained photo colours on an ivory ground, elegant and calm, not psychedelic."),
+    ("plaster", "Hand-troweled lime plaster: soft cloudy tonal shifts, very fine trowel marks, chalky matte, in a quiet colour from the photo."),
+    ("gilded", "Matte gilded leaf on a dark bole ground: slightly irregular square leaf seams, soft worn edges, restrained warm metal, never shiny chrome."),
+    ("none", ""),
+];
+pub fn material(d: &FrameDesign) -> Option<&'static str> {
+    MATERIALS
+        .iter()
+        .find(|(id, _)| *id == d.material && *id != "none")
+        .map(|(_, text)| *text)
 }
 pub fn instructions(d: &FrameDesign) -> Result<String, String> {
     validate(d)?;
@@ -95,6 +119,12 @@ mod tests {
         d.style = "illustration".into();
         assert!(instructions(&d).unwrap().contains("explicitly selected"));
         d.style = "not-a-style".into();
+        assert!(instructions(&d).is_err());
+        d.style = "auto".into();
+        assert!(material(&d).unwrap().contains("ONE physical surface"));
+        d.material = "none".into();
+        assert!(material(&d).is_none() && instructions(&d).is_ok());
+        d.material = "velvet-glitter".into();
         assert!(instructions(&d).is_err());
     }
 }
