@@ -58,5 +58,6 @@
   "还没有连接模型": "No model connected yet",
   "上面的风格可以直接用。想让 AI 帮你挑选、配标题，用 ChatGPT 账号登录一次即可，无需 API Key。": "You can use the styles above right away. To let AI choose and title them, sign in once with your ChatGPT account. No API key needed.",
   "连接 ChatGPT": "Connect ChatGPT",
-  "打开模型配置": "Open model settings"
+  "打开模型配置": "Open model settings",
+  "生图服务只画一块装裱材质，Margin 在本机裁出照片开口，照片本身不会被改动。": "The image service paints only a mounting material. Margin cuts the photo opening on your device and never alters the photo."
 }

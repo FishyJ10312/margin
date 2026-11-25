@@ -235,7 +235,7 @@
        <option value="image">{$t('AI 绘制材质 · 生图')}</option>
        <option value="sticker">{$t('独立装饰素材 · 生图')}</option>
       </select>
-      <p id="generation-method-help" class="field-help">{$t(imageTask?'由下方生图服务绘制图片，Margin 将图案合成到照片留白处。':'下面是按这张照片配好颜色的风格，免费、不发送照片。想要 AI 帮你挑选并起标题，再连接模型生成。')}</p>
+      <p id="generation-method-help" class="field-help">{$t(completeFrame&&config.frameDesign.material!=='none'?'生图服务只画一块装裱材质，Margin 在本机裁出照片开口，照片本身不会被改动。':imageTask?'由下方生图服务绘制图片，Margin 将图案合成到照片留白处。':'下面是按这张照片配好颜色的风格，免费、不发送照片。想要 AI 帮你挑选并起标题，再连接模型生成。')}</p>
      </div>
     {/if}
     <label class="field-label" for="style-direction">{$t(mode==='refine'?'这次想怎么调整？':'你的想法（可选）')}</label>
@@ -243,7 +243,7 @@
     <p id="brief-help" class="field-help">{$t('无需先选风格。你的描述优先，未指定的部分交给 AI。')}</p>
     <details class="generation-options"><summary>{$t('更多选项')}</summary><div class="generation-fields">
      {#if completeFrame}<ArtDirection bind:value={config.frameDesign} oninvalidate={()=>consent=false}/>{/if}
-     {#if mode==='design'||completeFrame}<label class="field-label" for="design-density">{$t('装饰密度')}</label><select id="design-density" bind:value={config.designDensity} on:change={()=>consent=false}><option value="auto">{$t('由 AI 根据照片决定')}</option><option value="simple">{$t('简约 · 少量点缀')}</option><option value="balanced">{$t('适中 · 线条与图案')}</option><option value="rich">{$t('丰富 · 更多交织与插画')}</option></select>{/if}
+     {#if completeFrame&&config.frameDesign.material==='none'}<label class="field-label" for="design-density">{$t('装饰密度')}</label><select id="design-density" bind:value={config.designDensity} on:change={()=>consent=false}><option value="auto">{$t('由 AI 根据照片决定')}</option><option value="simple">{$t('简约 · 少量点缀')}</option><option value="balanced">{$t('适中 · 线条与图案')}</option><option value="rich">{$t('丰富 · 更多交织与插画')}</option></select>{/if}
      {#if imageTask&&!completeFrame}<label class="model-consent"><input type="checkbox" bind:checked={reference} on:change={()=>consent=false}/><span>{$t('将上方照片作为风格参考（可选，默认不发送）')}</span></label>{/if}
     </div></details>
     {#if !imageTask&&needsSetup}
