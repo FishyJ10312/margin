@@ -956,6 +956,10 @@ fn compose(
     crate::decoration::draw(&mut canvas, &settings.decoration, layout, full)?;
     if let Some(art) = &settings.artwork {
         crate::artwork::draw(&mut canvas, art, layout)?;
+        if crate::harmony::applies(art) {
+            let ctx = crate::harmony::PhotoContext::new(source);
+            crate::harmony::apply(&mut canvas, &ctx, layout, 0, 0);
+        }
     }
     if let (Some(mark), Some((x, y))) = (mark, placement) {
         let factor = f64::from(layout.width) / f64::from(full.width);
@@ -1923,6 +1927,10 @@ pub fn watermark_detail(
     crate::decoration::draw_window(&mut canvas, &settings.decoration, l, full, ox, oy)?;
     if let Some(art) = &settings.artwork {
         crate::artwork::draw_window(&mut canvas, art, l, ox, oy)?;
+        if crate::harmony::applies(art) {
+            let ctx = crate::harmony::PhotoContext::new(&source.pixels);
+            crate::harmony::apply(&mut canvas, &ctx, l, ox, oy);
+        }
     }
     let mark = if factor < 1.0 {
         resize_alpha(

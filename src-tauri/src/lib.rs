@@ -9,6 +9,7 @@ pub mod art_ai;
 pub mod art_direction;
 pub mod art_director;
 pub mod art_styles;
+pub mod harmony;
 pub mod artwork;
 pub mod backdrop;
 pub mod camera_info;
